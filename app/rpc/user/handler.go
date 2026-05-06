@@ -1,4 +1,4 @@
-package user
+package main
 
 import (
 	"Goffer/app/rpc/user/pack"
