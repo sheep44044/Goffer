@@ -8,7 +8,7 @@ import (
 	"Goffer/app/rpc/user/dal/minio"
 	"Goffer/app/rpc/user/dal/qdrant"
 	"Goffer/app/rpc/user/mq"
-	"Goffer/pkg/util"
+	"Goffer/pkg/jwt"
 	"context"
 
 	"github.com/cloudwego/eino-ext/components/embedding/ark"
@@ -22,7 +22,7 @@ type ServiceContext struct {
 	Minio       *minio.FileStorage
 	Kafka       *mq.KafkaProducer
 	AI          *ai.AIService
-	JWT         *util.JWTManager
+	JWT         *jwt.JWTManager
 	VectorStore *qdrant.VectorStore
 }
 
@@ -47,7 +47,7 @@ func NewServiceContext(cfg *config.Config) *ServiceContext {
 
 	ai := ai.NewAIService(cfg)
 
-	jwtManager := util.NewJWTManager(cfg.JWT.SecretKey, cfg.JWT.Issuer, rdb)
+	jwtManager := jwt.NewJWTManager(cfg.JWT.SecretKey, cfg.JWT.Issuer, rdb)
 
 	embedder, err := ark.NewEmbedder(context.Background(), &ark.EmbeddingConfig{
 		APIKey: cfg.VolcEngine.Key,

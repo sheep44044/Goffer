@@ -3,7 +3,7 @@ package worker
 import (
 	"Goffer/app/rpc/user/mq"
 	"Goffer/app/rpc/user/svc"
-	"Goffer/pkg/util"
+	"Goffer/pkg/pdfparser"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -95,7 +95,7 @@ func (w *ResumeWorker) handleResumeParse(ctx context.Context, task mq.ParseTask)
 		fmt.Println("-> 2. 图片提为 Markdown 完成")
 	} else if task.FileType == "pdf" {
 		// 假设此处 PDF 提取出的仅是纯文本
-		parsedText, err = util.ExtractTextFromPDF(fileBytes)
+		parsedText, err = pdfparser.ExtractTextFromPDF(fileBytes)
 		if err != nil {
 			return fmt.Errorf("PDF纯文本提取失败: %w", err)
 		}

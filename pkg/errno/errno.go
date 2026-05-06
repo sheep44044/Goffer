@@ -11,9 +11,14 @@ const (
 	ParamErrCode               = 10002
 	UserAlreadyExistErrCode    = 10003
 	AuthorizationFailedErrCode = 10004
+	UserNotExistErrCode        = 10005
+	PasswordMismatchErrCode    = 10006
 
-	UserNotExistErrCode     = 10005
-	PasswordMismatchErrCode = 10006
+	// 新增业务线错误码：文件与解析相关
+	FileUploadErrCode     = 20001
+	FileFormatErrCode     = 20002
+	ResumeParseErrCode    = 20003
+	ResumeNotFoundErrCode = 20004
 )
 
 type ErrNo struct {
@@ -40,9 +45,13 @@ var (
 	ParamErr               = NewErrNo(ParamErrCode, "Wrong Parameter has been given")
 	UserAlreadyExistErr    = NewErrNo(UserAlreadyExistErrCode, "User already exists")
 	AuthorizationFailedErr = NewErrNo(AuthorizationFailedErrCode, "Authorization failed")
+	UserNotExistErr        = NewErrNo(UserNotExistErrCode, "User does not exist")
+	PasswordMismatchErr    = NewErrNo(PasswordMismatchErrCode, "Password mismatch")
 
-	UserNotExistErr     = NewErrNo(UserNotExistErrCode, "User does not exist")
-	PasswordMismatchErr = NewErrNo(PasswordMismatchErrCode, "Password mismatch")
+	FileUploadErr     = NewErrNo(FileUploadErrCode, "Failed to upload file")
+	FileFormatErr     = NewErrNo(FileFormatErrCode, "Unsupported file format")
+	ResumeParseErr    = NewErrNo(ResumeParseErrCode, "AI failed to parse resume")
+	ResumeNotFoundErr = NewErrNo(ResumeNotFoundErrCode, "Resume does not exist")
 )
 
 func ConvertErr(err error) ErrNo {

@@ -1,11 +1,11 @@
-package user
+package main
 
 import (
 	"Goffer/app/rpc/user/config"
 	"Goffer/app/rpc/user/svc"
 	"Goffer/kitex_gen/user/userservice"
-	"Goffer/pkg/constants"
-	"Goffer/pkg/middleware"
+	"Goffer/pkg/contextutil"
+	middleware2 "Goffer/pkg/middleware/rpc"
 	"fmt"
 	"net"
 
@@ -30,7 +30,7 @@ func main() {
 		panic(fmt.Errorf("连接 Etcd 失败: %w", err))
 	}
 
-	ip, err := constants.GetOutBoundIP()
+	ip, err := contextutil.GetOutBoundIP()
 	if err != nil {
 		panic(err)
 	}
@@ -45,8 +45,8 @@ func main() {
 
 	svr := userservice.NewServer(new(UserServiceImpl),
 		server.WithServerBasicInfo(&rpcinfo.EndpointBasicInfo{ServiceName: cfg.Service.Name}),
-		server.WithMiddleware(middleware.CommonMiddleware), // middleware
-		server.WithMiddleware(middleware.ServerMiddleware),
+		server.WithMiddleware(middleware2.CommonMiddleware), // middleware
+		server.WithMiddleware(middleware2.ServerMiddleware),
 		server.WithServiceAddr(addr),                                       // address
 		server.WithLimit(&limit.Option{MaxConnections: 1000, MaxQPS: 100}), // limit
 		server.WithMuxTransport(),                                          // Multiplex

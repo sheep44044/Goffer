@@ -5,8 +5,10 @@ import (
 	"Goffer/app/rpc/user/mq"
 	"Goffer/app/rpc/user/svc"
 	"Goffer/kitex_gen/user"
-	"Goffer/pkg/util"
+	"Goffer/pkg/errno"
+	"Goffer/pkg/snowflake"
 	"context"
+	"fmt"
 )
 
 type UploadResumeService struct {
@@ -25,10 +27,10 @@ func (s *UploadResumeService) UploadResume(ctx context.Context, req *user.Upload
 		req.ContentType,
 	)
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("minio upload failed: %w", err)
 	}
 
-	resumeID := util.GenString()
+	resumeID := snowflake.GenString()
 	err = s.svc.DB.CreateResume(ctx, []*db.Resume{{
 		ID:       resumeID,
 		UserID:   req.UserId,
@@ -36,7 +38,7 @@ func (s *UploadResumeService) UploadResume(ctx context.Context, req *user.Upload
 		FileName: safeFileName,
 	}})
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("db create resume failed: %w", err)
 	}
 
 	err = s.svc.Kafka.SendResumeParseTask(mq.ParseTask{
@@ -45,7 +47,7 @@ func (s *UploadResumeService) UploadResume(ctx context.Context, req *user.Upload
 		FileType: req.ContentType,
 	})
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("kafka publish failed: %w", errno.ServiceErr.WithMessage("解析任务投递失败，请稍后重试"))
 	}
 
 	return resumeID, fileURL, nil
