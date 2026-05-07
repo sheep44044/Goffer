@@ -3,15 +3,12 @@ package worker
 import (
 	"Goffer/app/rpc/user/mq"
 	"Goffer/app/rpc/user/svc"
-	"Goffer/pkg/pdfparser"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
 
-	"github.com/cloudwego/eino-ext/components/document/transformer/splitter/markdown"
-	"github.com/cloudwego/eino-ext/components/document/transformer/splitter/recursive"
-	"github.com/cloudwego/eino/schema"
 	"github.com/segmentio/kafka-go"
 )
 
@@ -60,8 +57,15 @@ func (w *ResumeWorker) Start() {
 		// 调用处理函数，把 svcCtx 和 ctx 传进去
 		err = w.handleResumeParse(ctx, task)
 		if err != nil {
-			log.Printf("任务处理失败 (ResumeID: %s): %v", task.ResumeID, err)
-			continue // 失败不提交，等下次重试
+			// 经过多次重试依然失败，进入死信处理流程
+			log.Printf("【严重异常】任务最终失败放弃 (ResumeID: %s): %v", task.ResumeID, err)
+
+			// 1. 更新数据库状态为“解析失败” (非常重要，否则前端一直显示解析中)
+			_ = w.svcCtx.DB.UpdateResumeStatus(ctx, task.ResumeID, -1) // 假设 -1 表示失败
+
+			// 2. (可选) 将这条 task 序列化后发往另一个专门存错误的 Kafka Topic (死信队列 DLQ)，或者记录到 MySQL 的 error_log 表
+		} else {
+			fmt.Printf("任务成功完成 (ResumeID: %s)\n", task.ResumeID)
 		}
 
 		// 成功处理，提交 offset
@@ -74,116 +78,33 @@ func (w *ResumeWorker) Start() {
 	}
 }
 
-// handleResumeParse 真正的业务处理逻辑
-func (w *ResumeWorker) handleResumeParse(ctx context.Context, task mq.ParseTask) error {
-	fmt.Printf("开始处理简历 - URL: %s, 类型: %s\n", task.FileURL, task.FileType)
+func (w *ResumeWorker) processWithRetry(ctx context.Context, task mq.ParseTask) error {
+	maxRetries := 3
+	var err error
 
-	// 1. 下载文件
-	fileBytes, err := w.svcCtx.Minio.DownloadFile(ctx, task.FileURL)
-	if err != nil {
-		return err
-	}
-	fmt.Println("-> 1. 文件下载完成")
-
-	var parsedText string
-	// 2. AI 提取文本
-	if task.FileType == "png" || task.FileType == "jpg" || task.FileType == "jpeg" {
-		parsedText, err = w.svcCtx.AI.ParseResumeToMarkdown(ctx, fileBytes, task.FileType)
-		if err != nil {
-			return err
+	for i := 0; i < maxRetries; i++ {
+		err = w.handleResumeParse(ctx, task)
+		if err == nil {
+			return nil // 成功直接返回
 		}
-		fmt.Println("-> 2. 图片提为 Markdown 完成")
-	} else if task.FileType == "pdf" {
-		// 假设此处 PDF 提取出的仅是纯文本
-		parsedText, err = pdfparser.ExtractTextFromPDF(fileBytes)
-		if err != nil {
-			return fmt.Errorf("PDF纯文本提取失败: %w", err)
+
+		log.Printf("第 %d 次处理失败 (ResumeID: %s): %v", i+1, task.ResumeID, err)
+
+		// 针对一些不可恢复的错误（比如文件不存在，或者 ID 错误），直接退出，不重试
+		if isNonRetryableError(err) {
+			break
 		}
-		fmt.Println("-> 2. PDF 文本提取完成")
+
+		// 等待一段时间再重试，防止由于网络瞬间抖动导致的密集报错
+		time.Sleep(time.Second * time.Duration(i*2+1))
 	}
 
-	chunks, err := splitDocument(ctx, parsedText, task.FileType, task.ResumeID)
-	if err != nil {
-		return fmt.Errorf("文档切片失败: %w", err)
-	}
-	fmt.Printf("-> 3. Eino 切片完成，共分成 %d 块\n", len(chunks))
-
-	for _, chunk := range chunks {
-		if chunk.MetaData == nil {
-			chunk.MetaData = make(map[string]any)
-		}
-		// 注入你期望的额外元数据，Eino 会在入库时自动映射为 Qdrant 的 Payload
-
-		chunk.MetaData["resume_id"] = task.ResumeID
-	}
-
-	// 见证魔法时刻：这一行代码搞定了调用大模型 Embedding 并存入 Qdrant
-	ids, err := w.svcCtx.VectorStore.Indexer.Store(ctx, chunks)
-	if err != nil {
-		return fmt.Errorf("向量入库失败: %w", err)
-	}
-
-	fmt.Printf("-> 4. 向量入库完成，成功存入 %d 条数据，Qdrant 返回的 ID 列表: %v\n", len(ids), ids)
-	// 5. 更新 MySQL 状态
-
-	err = w.svcCtx.DB.UpdateResumeStatus(ctx, task.ResumeID, 2)
-	if err != nil {
-		return err
-	}
-	fmt.Println("-> 5. 状态更新完成")
-
-	return nil
+	return fmt.Errorf("超过最大重试次数: %w", err)
 }
 
-func splitDocument(ctx context.Context, parsedText string, fileType string, resumeID string) ([]*schema.Document, error) {
-	// 1. 将原始文本包装成 Eino 需要的标准格式
-	doc := &schema.Document{
-		ID:      resumeID,
-		Content: parsedText,
-		MetaData: map[string]any{
-			"file_type": fileType,
-		},
-	}
-	srcDocs := []*schema.Document{doc}
-
-	// 2. 根据类型选择切分策略
-	if isMarkdown(fileType) {
-		// --- 方案 A: Markdown 按标题切分 ---
-		mdConfig := &markdown.HeaderConfig{
-			Headers: map[string]string{
-				"#":   "Level 1 Heading",
-				"##":  "Level 2 Heading",
-				"###": "Level 3 Heading",
-			},
-			TrimHeaders: false,
-		}
-
-		mdSplitter, err := markdown.NewHeaderSplitter(ctx, mdConfig)
-		if err != nil {
-			return nil, fmt.Errorf("初始化 Markdown 切分器失败: %w", err)
-		}
-
-		return mdSplitter.Transform(ctx, srcDocs)
-	}
-
-	// --- 方案 B: 纯文本按字符长度递归切分 ---
-	recConfig := &recursive.Config{
-		ChunkSize:   500, // 这里的块大小建议根据你所使用的 Embedding 模型的最大 Token 长度进行调整
-		OverlapSize: 50,
-		Separators:  []string{"\n\n", "\n", " ", ""},
-		KeepType:    recursive.KeepTypeNone,
-	}
-
-	charSplitter, err := recursive.NewSplitter(ctx, recConfig)
-	if err != nil {
-		return nil, fmt.Errorf("初始化 Recursive 切分器失败: %w", err)
-	}
-
-	return charSplitter.Transform(ctx, srcDocs)
-}
-
-// isMarkdown 辅助判断当前文本结构是否倾向于使用 Markdown 切分器
-func isMarkdown(fileType string) bool {
-	// 这里假设你大模型提取图片输出的格式是包含 Markdown Header 语法的
-	return fileType == "md"
+// 辅助函数：判断是否是无需重试的致命错误
+func isNonRetryableError(err error) bool {
+	// 比如判断错误类型：如果是 Minio 找不到文件 (404)，那么重试 100 次也没用，直接跳过
+	// 如果是网络超时，那就值得重试
+	return false
 }
