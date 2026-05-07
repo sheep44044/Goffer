@@ -2,9 +2,11 @@ package svc
 
 import (
 	"Goffer/app/rpc/interview/config"
+	"Goffer/app/rpc/interview/dal/ai"
 	"Goffer/app/rpc/interview/dal/cache"
 	"Goffer/app/rpc/interview/dal/mongodb"
 	"Goffer/app/rpc/interview/dal/qdrant"
+	"Goffer/app/rpc/interview/dal/repo"
 	"Goffer/app/rpc/interview/rpc"
 	"Goffer/kitex_gen/user/userservice"
 	"context"
@@ -18,6 +20,8 @@ type ServiceContext struct {
 	Cache       *redis.Client
 	Mongo       *mongodb.MongoManager
 	VectorStore *qdrant.VectorStore
+	AI          *ai.AIService
+	Repo        *repo.RepoService
 	UserClient  userservice.Client
 }
 
@@ -31,6 +35,8 @@ func NewServiceContext(cfg *config.Config) *ServiceContext {
 	if err != nil {
 		panic(err)
 	}
+
+	ai := ai.NewAIService(cfg)
 
 	embedder, err := ark.NewEmbedder(context.Background(), &ark.EmbeddingConfig{
 		APIKey: cfg.VolcEngine.Key,
@@ -48,12 +54,16 @@ func NewServiceContext(cfg *config.Config) *ServiceContext {
 		embedder,
 	)
 
+	repo := repo.NewGetChatService(rdb, mongo, vectorStore)
+
 	userRpcClient := rpc.InitUserClient(cfg)
 	return &ServiceContext{
 		Config:      cfg,
 		Cache:       rdb,
 		Mongo:       mongo,
 		VectorStore: vectorStore,
+		AI:          ai,
+		Repo:        repo,
 		UserClient:  userRpcClient,
 	}
 }

@@ -1,0 +1,49 @@
+# 编译输出与二进制文件
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# 依赖管理
+vendor/
+go.work
+go.work.sum
+
+# 测试覆盖率文件
+*.cover
+*.coverprofile
+coverage.out
+coverage.html
+
+# 日志、临时文件和编辑器备份
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# macOS 系统文件
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# GoLand IDE 配置
+.idea/
+*.iml
+
+# 用户特定配置
+*.user
+*.user.*
+
+# 常见构建输出目录
+/bin/
+/dist/
+/bazel-*

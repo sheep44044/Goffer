@@ -4,6 +4,7 @@ import (
 	"Goffer/app/rpc/interview/service"
 	"Goffer/app/rpc/interview/svc"
 	"Goffer/app/rpc/user/pack"
+	"fmt"
 
 	"Goffer/kitex_gen/interview"
 	"Goffer/pkg/errno"
@@ -12,6 +13,19 @@ import (
 
 type interviewServiceImpl struct {
 	svc *svc.ServiceContext
+}
+
+func (s interviewServiceImpl) ChatStream(req *interview.ChatReq, stream interview.InterviewService_ChatStreamServer) (err error) {
+	ctx := stream.Context()
+
+	if req.SessionId == "" {
+		return fmt.Errorf("session_id is required")
+	}
+	if req.Message == "" {
+		return fmt.Errorf("message is required")
+	}
+
+	return service.NewChatService(s.svc).ChatStream(ctx, req, stream)
 }
 
 func (s interviewServiceImpl) StartInterview(ctx context.Context, req *interview.StartInterviewReq) (resp *interview.StartInterviewResp, err error) {
@@ -44,23 +58,6 @@ func (s interviewServiceImpl) GetChatContext(ctx context.Context, req *interview
 	if err != nil {
 		resp.Resp = pack.BuildBaseResp(errno.ServiceErr)
 		return resp, nil
-	}
-
-	resp.Resp = pack.BuildBaseResp(errno.Success)
-	return resp, nil
-}
-
-func (s interviewServiceImpl) SaveChatRecord(ctx context.Context, req *interview.SaveChatRecordReq) (resp *interview.SaveChatRecordResp, err error) {
-	resp = new(interview.SaveChatRecordResp)
-
-	if len(req.SessionId) == 0 || len(req.UserMsg) == 0 || len(req.AiMsg) == 0 {
-		resp.Resp = pack.BuildBaseResp(errno.ParamErr)
-		return resp, nil
-	}
-
-	err = service.NewSaveChatService(s.svc).SaveChatRecordInterview(ctx, req)
-	if err != nil {
-		resp.Resp = pack.BuildBaseResp(errno.ServiceErr)
 	}
 
 	resp.Resp = pack.BuildBaseResp(errno.Success)

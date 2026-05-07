@@ -6,8 +6,10 @@ import (
 	interview "Goffer/kitex_gen/interview"
 	"context"
 	"errors"
+	"fmt"
 	client "github.com/cloudwego/kitex/client"
 	kitex "github.com/cloudwego/kitex/pkg/serviceinfo"
+	streaming "github.com/cloudwego/kitex/pkg/streaming"
 )
 
 var errInvalidMessageType = errors.New("invalid message type for service method handler")
@@ -20,17 +22,17 @@ var serviceMethods = map[string]kitex.MethodInfo{
 		false,
 		kitex.WithStreamingMode(kitex.StreamingNone),
 	),
+	"ChatStream": kitex.NewMethodInfo(
+		chatStreamHandler,
+		newInterviewServiceChatStreamArgs,
+		newInterviewServiceChatStreamResult,
+		false,
+		kitex.WithStreamingMode(kitex.StreamingServer),
+	),
 	"GetChatContext": kitex.NewMethodInfo(
 		getChatContextHandler,
 		newInterviewServiceGetChatContextArgs,
 		newInterviewServiceGetChatContextResult,
-		false,
-		kitex.WithStreamingMode(kitex.StreamingNone),
-	),
-	"SaveChatRecord": kitex.NewMethodInfo(
-		saveChatRecordHandler,
-		newInterviewServiceSaveChatRecordArgs,
-		newInterviewServiceSaveChatRecordResult,
 		false,
 		kitex.WithStreamingMode(kitex.StreamingNone),
 	),
@@ -59,7 +61,7 @@ func serviceInfoForClient() *kitex.ServiceInfo {
 
 // NewServiceInfo creates a new ServiceInfo containing all methods
 func NewServiceInfo() *kitex.ServiceInfo {
-	return newServiceInfo(false, true, true)
+	return newServiceInfo(true, true, true)
 }
 
 // NewServiceInfo creates a new ServiceInfo containing non-streaming methods
@@ -118,6 +120,51 @@ func newInterviewServiceStartInterviewResult() interface{} {
 	return interview.NewInterviewServiceStartInterviewResult()
 }
 
+func chatStreamHandler(ctx context.Context, handler interface{}, arg, result interface{}) error {
+	st, ok := arg.(*streaming.Args)
+	if !ok {
+		return errors.New("InterviewService.ChatStream is a thrift streaming method, please call with Kitex StreamClient")
+	}
+	stream := &interviewServiceChatStreamServer{st.Stream}
+	req := new(interview.ChatReq)
+	if err := st.Stream.RecvMsg(req); err != nil {
+		return err
+	}
+	return handler.(interview.InterviewService).ChatStream(req, stream)
+}
+
+type interviewServiceChatStreamClient struct {
+	streaming.Stream
+}
+
+func (x *interviewServiceChatStreamClient) DoFinish(err error) {
+	if finisher, ok := x.Stream.(streaming.WithDoFinish); ok {
+		finisher.DoFinish(err)
+	} else {
+		panic(fmt.Sprintf("streaming.WithDoFinish is not implemented by %T", x.Stream))
+	}
+}
+func (x *interviewServiceChatStreamClient) Recv() (*interview.ChatResp, error) {
+	m := new(interview.ChatResp)
+	return m, x.Stream.RecvMsg(m)
+}
+
+type interviewServiceChatStreamServer struct {
+	streaming.Stream
+}
+
+func (x *interviewServiceChatStreamServer) Send(m *interview.ChatResp) error {
+	return x.Stream.SendMsg(m)
+}
+
+func newInterviewServiceChatStreamArgs() interface{} {
+	return interview.NewInterviewServiceChatStreamArgs()
+}
+
+func newInterviewServiceChatStreamResult() interface{} {
+	return interview.NewInterviewServiceChatStreamResult()
+}
+
 func getChatContextHandler(ctx context.Context, handler interface{}, arg, result interface{}) error {
 	realArg := arg.(*interview.InterviewServiceGetChatContextArgs)
 	realResult := result.(*interview.InterviewServiceGetChatContextResult)
@@ -134,24 +181,6 @@ func newInterviewServiceGetChatContextArgs() interface{} {
 
 func newInterviewServiceGetChatContextResult() interface{} {
 	return interview.NewInterviewServiceGetChatContextResult()
-}
-
-func saveChatRecordHandler(ctx context.Context, handler interface{}, arg, result interface{}) error {
-	realArg := arg.(*interview.InterviewServiceSaveChatRecordArgs)
-	realResult := result.(*interview.InterviewServiceSaveChatRecordResult)
-	success, err := handler.(interview.InterviewService).SaveChatRecord(ctx, realArg.Req)
-	if err != nil {
-		return err
-	}
-	realResult.Success = success
-	return nil
-}
-func newInterviewServiceSaveChatRecordArgs() interface{} {
-	return interview.NewInterviewServiceSaveChatRecordArgs()
-}
-
-func newInterviewServiceSaveChatRecordResult() interface{} {
-	return interview.NewInterviewServiceSaveChatRecordResult()
 }
 
 type kClient struct {
@@ -174,21 +203,32 @@ func (p *kClient) StartInterview(ctx context.Context, req *interview.StartInterv
 	return _result.GetSuccess(), nil
 }
 
+func (p *kClient) ChatStream(ctx context.Context, req *interview.ChatReq) (InterviewService_ChatStreamClient, error) {
+	streamClient, ok := p.c.(client.Streaming)
+	if !ok {
+		return nil, fmt.Errorf("client not support streaming")
+	}
+	res := new(streaming.Result)
+	err := streamClient.Stream(ctx, "ChatStream", nil, res)
+	if err != nil {
+		return nil, err
+	}
+	stream := &interviewServiceChatStreamClient{res.Stream}
+
+	if err := stream.Stream.SendMsg(req); err != nil {
+		return nil, err
+	}
+	if err := stream.Stream.Close(); err != nil {
+		return nil, err
+	}
+	return stream, nil
+}
+
 func (p *kClient) GetChatContext(ctx context.Context, req *interview.GetChatContextReq) (r *interview.GetChatContextResp, err error) {
 	var _args interview.InterviewServiceGetChatContextArgs
 	_args.Req = req
 	var _result interview.InterviewServiceGetChatContextResult
 	if err = p.c.Call(ctx, "GetChatContext", &_args, &_result); err != nil {
-		return
-	}
-	return _result.GetSuccess(), nil
-}
-
-func (p *kClient) SaveChatRecord(ctx context.Context, req *interview.SaveChatRecordReq) (r *interview.SaveChatRecordResp, err error) {
-	var _args interview.InterviewServiceSaveChatRecordArgs
-	_args.Req = req
-	var _result interview.InterviewServiceSaveChatRecordResult
-	if err = p.c.Call(ctx, "SaveChatRecord", &_args, &_result); err != nil {
 		return
 	}
 	return _result.GetSuccess(), nil

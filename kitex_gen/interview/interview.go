@@ -6,6 +6,7 @@ import (
 	"Goffer/kitex_gen/base"
 	"context"
 	"fmt"
+	"github.com/cloudwego/kitex/pkg/streaming"
 )
 
 type StartInterviewReq struct {
@@ -100,6 +101,73 @@ var fieldIDToName_StartInterviewResp = map[int16]string{
 	1: "resp",
 	2: "session_id",
 	3: "opening_remark",
+}
+
+type ChatReq struct {
+	SessionId string `thrift:"session_id,1" frugal:"1,default,string" json:"session_id"`
+	Message   string `thrift:"message,2" frugal:"2,default,string" json:"message"`
+}
+
+func NewChatReq() *ChatReq {
+	return &ChatReq{}
+}
+
+func (p *ChatReq) InitDefault() {
+}
+
+func (p *ChatReq) GetSessionId() (v string) {
+	return p.SessionId
+}
+
+func (p *ChatReq) GetMessage() (v string) {
+	return p.Message
+}
+func (p *ChatReq) SetSessionId(val string) {
+	p.SessionId = val
+}
+func (p *ChatReq) SetMessage(val string) {
+	p.Message = val
+}
+
+func (p *ChatReq) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ChatReq(%+v)", *p)
+}
+
+var fieldIDToName_ChatReq = map[int16]string{
+	1: "session_id",
+	2: "message",
+}
+
+type ChatResp struct {
+	Chunk string `thrift:"chunk,1" frugal:"1,default,string" json:"chunk"`
+}
+
+func NewChatResp() *ChatResp {
+	return &ChatResp{}
+}
+
+func (p *ChatResp) InitDefault() {
+}
+
+func (p *ChatResp) GetChunk() (v string) {
+	return p.Chunk
+}
+func (p *ChatResp) SetChunk(val string) {
+	p.Chunk = val
+}
+
+func (p *ChatResp) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ChatResp(%+v)", *p)
+}
+
+var fieldIDToName_ChatResp = map[int16]string{
+	1: "chunk",
 }
 
 type ChatMessage struct {
@@ -243,106 +311,12 @@ var fieldIDToName_GetChatContextResp = map[int16]string{
 	4: "rag_chunks",
 }
 
-type SaveChatRecordReq struct {
-	SessionId string `thrift:"session_id,1" frugal:"1,default,string" json:"session_id"`
-	UserMsg   string `thrift:"user_msg,2" frugal:"2,default,string" json:"user_msg"`
-	AiMsg     string `thrift:"ai_msg,3" frugal:"3,default,string" json:"ai_msg"`
-	NextState string `thrift:"next_state,4" frugal:"4,default,string" json:"next_state"`
-}
-
-func NewSaveChatRecordReq() *SaveChatRecordReq {
-	return &SaveChatRecordReq{}
-}
-
-func (p *SaveChatRecordReq) InitDefault() {
-}
-
-func (p *SaveChatRecordReq) GetSessionId() (v string) {
-	return p.SessionId
-}
-
-func (p *SaveChatRecordReq) GetUserMsg() (v string) {
-	return p.UserMsg
-}
-
-func (p *SaveChatRecordReq) GetAiMsg() (v string) {
-	return p.AiMsg
-}
-
-func (p *SaveChatRecordReq) GetNextState() (v string) {
-	return p.NextState
-}
-func (p *SaveChatRecordReq) SetSessionId(val string) {
-	p.SessionId = val
-}
-func (p *SaveChatRecordReq) SetUserMsg(val string) {
-	p.UserMsg = val
-}
-func (p *SaveChatRecordReq) SetAiMsg(val string) {
-	p.AiMsg = val
-}
-func (p *SaveChatRecordReq) SetNextState(val string) {
-	p.NextState = val
-}
-
-func (p *SaveChatRecordReq) String() string {
-	if p == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("SaveChatRecordReq(%+v)", *p)
-}
-
-var fieldIDToName_SaveChatRecordReq = map[int16]string{
-	1: "session_id",
-	2: "user_msg",
-	3: "ai_msg",
-	4: "next_state",
-}
-
-type SaveChatRecordResp struct {
-	Resp *base.Response `thrift:"resp,1" frugal:"1,default,base.Response" json:"resp"`
-}
-
-func NewSaveChatRecordResp() *SaveChatRecordResp {
-	return &SaveChatRecordResp{}
-}
-
-func (p *SaveChatRecordResp) InitDefault() {
-}
-
-var SaveChatRecordResp_Resp_DEFAULT *base.Response
-
-func (p *SaveChatRecordResp) GetResp() (v *base.Response) {
-	if !p.IsSetResp() {
-		return SaveChatRecordResp_Resp_DEFAULT
-	}
-	return p.Resp
-}
-func (p *SaveChatRecordResp) SetResp(val *base.Response) {
-	p.Resp = val
-}
-
-func (p *SaveChatRecordResp) IsSetResp() bool {
-	return p.Resp != nil
-}
-
-func (p *SaveChatRecordResp) String() string {
-	if p == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("SaveChatRecordResp(%+v)", *p)
-}
-
-var fieldIDToName_SaveChatRecordResp = map[int16]string{
-	1: "resp",
-}
-
 type InterviewService interface {
 	StartInterview(ctx context.Context, req *StartInterviewReq) (r *StartInterviewResp, err error)
 
-	GetChatContext(ctx context.Context, req *GetChatContextReq) (r *GetChatContextResp, err error)
+	ChatStream(req *ChatReq, stream InterviewService_ChatStreamServer) (err error)
 
-	SaveChatRecord(ctx context.Context, req *SaveChatRecordReq) (r *SaveChatRecordResp, err error)
+	GetChatContext(ctx context.Context, req *GetChatContextReq) (r *GetChatContextResp, err error)
 }
 
 type InterviewServiceStartInterviewArgs struct {
@@ -421,6 +395,88 @@ var fieldIDToName_InterviewServiceStartInterviewResult = map[int16]string{
 	0: "success",
 }
 
+type InterviewServiceChatStreamArgs struct {
+	Req *ChatReq `thrift:"req,1" frugal:"1,default,ChatReq" json:"req"`
+}
+
+func NewInterviewServiceChatStreamArgs() *InterviewServiceChatStreamArgs {
+	return &InterviewServiceChatStreamArgs{}
+}
+
+func (p *InterviewServiceChatStreamArgs) InitDefault() {
+}
+
+var InterviewServiceChatStreamArgs_Req_DEFAULT *ChatReq
+
+func (p *InterviewServiceChatStreamArgs) GetReq() (v *ChatReq) {
+	if !p.IsSetReq() {
+		return InterviewServiceChatStreamArgs_Req_DEFAULT
+	}
+	return p.Req
+}
+func (p *InterviewServiceChatStreamArgs) SetReq(val *ChatReq) {
+	p.Req = val
+}
+
+func (p *InterviewServiceChatStreamArgs) IsSetReq() bool {
+	return p.Req != nil
+}
+
+func (p *InterviewServiceChatStreamArgs) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("InterviewServiceChatStreamArgs(%+v)", *p)
+}
+
+var fieldIDToName_InterviewServiceChatStreamArgs = map[int16]string{
+	1: "req",
+}
+
+type InterviewServiceChatStreamResult struct {
+	Success *ChatResp `thrift:"success,0,optional" frugal:"0,optional,ChatResp" json:"success,omitempty"`
+}
+
+func NewInterviewServiceChatStreamResult() *InterviewServiceChatStreamResult {
+	return &InterviewServiceChatStreamResult{}
+}
+
+func (p *InterviewServiceChatStreamResult) InitDefault() {
+}
+
+var InterviewServiceChatStreamResult_Success_DEFAULT *ChatResp
+
+func (p *InterviewServiceChatStreamResult) GetSuccess() (v *ChatResp) {
+	if !p.IsSetSuccess() {
+		return InterviewServiceChatStreamResult_Success_DEFAULT
+	}
+	return p.Success
+}
+func (p *InterviewServiceChatStreamResult) SetSuccess(x interface{}) {
+	p.Success = x.(*ChatResp)
+}
+
+func (p *InterviewServiceChatStreamResult) IsSetSuccess() bool {
+	return p.Success != nil
+}
+
+func (p *InterviewServiceChatStreamResult) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("InterviewServiceChatStreamResult(%+v)", *p)
+}
+
+var fieldIDToName_InterviewServiceChatStreamResult = map[int16]string{
+	0: "success",
+}
+
+type InterviewService_ChatStreamServer interface {
+	streaming.Stream
+
+	Send(*ChatResp) error
+}
+
 type InterviewServiceGetChatContextArgs struct {
 	Req *GetChatContextReq `thrift:"req,1" frugal:"1,default,GetChatContextReq" json:"req"`
 }
@@ -494,81 +550,5 @@ func (p *InterviewServiceGetChatContextResult) String() string {
 }
 
 var fieldIDToName_InterviewServiceGetChatContextResult = map[int16]string{
-	0: "success",
-}
-
-type InterviewServiceSaveChatRecordArgs struct {
-	Req *SaveChatRecordReq `thrift:"req,1" frugal:"1,default,SaveChatRecordReq" json:"req"`
-}
-
-func NewInterviewServiceSaveChatRecordArgs() *InterviewServiceSaveChatRecordArgs {
-	return &InterviewServiceSaveChatRecordArgs{}
-}
-
-func (p *InterviewServiceSaveChatRecordArgs) InitDefault() {
-}
-
-var InterviewServiceSaveChatRecordArgs_Req_DEFAULT *SaveChatRecordReq
-
-func (p *InterviewServiceSaveChatRecordArgs) GetReq() (v *SaveChatRecordReq) {
-	if !p.IsSetReq() {
-		return InterviewServiceSaveChatRecordArgs_Req_DEFAULT
-	}
-	return p.Req
-}
-func (p *InterviewServiceSaveChatRecordArgs) SetReq(val *SaveChatRecordReq) {
-	p.Req = val
-}
-
-func (p *InterviewServiceSaveChatRecordArgs) IsSetReq() bool {
-	return p.Req != nil
-}
-
-func (p *InterviewServiceSaveChatRecordArgs) String() string {
-	if p == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("InterviewServiceSaveChatRecordArgs(%+v)", *p)
-}
-
-var fieldIDToName_InterviewServiceSaveChatRecordArgs = map[int16]string{
-	1: "req",
-}
-
-type InterviewServiceSaveChatRecordResult struct {
-	Success *SaveChatRecordResp `thrift:"success,0,optional" frugal:"0,optional,SaveChatRecordResp" json:"success,omitempty"`
-}
-
-func NewInterviewServiceSaveChatRecordResult() *InterviewServiceSaveChatRecordResult {
-	return &InterviewServiceSaveChatRecordResult{}
-}
-
-func (p *InterviewServiceSaveChatRecordResult) InitDefault() {
-}
-
-var InterviewServiceSaveChatRecordResult_Success_DEFAULT *SaveChatRecordResp
-
-func (p *InterviewServiceSaveChatRecordResult) GetSuccess() (v *SaveChatRecordResp) {
-	if !p.IsSetSuccess() {
-		return InterviewServiceSaveChatRecordResult_Success_DEFAULT
-	}
-	return p.Success
-}
-func (p *InterviewServiceSaveChatRecordResult) SetSuccess(x interface{}) {
-	p.Success = x.(*SaveChatRecordResp)
-}
-
-func (p *InterviewServiceSaveChatRecordResult) IsSetSuccess() bool {
-	return p.Success != nil
-}
-
-func (p *InterviewServiceSaveChatRecordResult) String() string {
-	if p == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("InterviewServiceSaveChatRecordResult(%+v)", *p)
-}
-
-var fieldIDToName_InterviewServiceSaveChatRecordResult = map[int16]string{
 	0: "success",
 }

@@ -7,13 +7,26 @@ import (
 	"context"
 	client "github.com/cloudwego/kitex/client"
 	callopt "github.com/cloudwego/kitex/client/callopt"
+	streamcall "github.com/cloudwego/kitex/client/callopt/streamcall"
+	streamclient "github.com/cloudwego/kitex/client/streamclient"
+	streaming "github.com/cloudwego/kitex/pkg/streaming"
+	transport "github.com/cloudwego/kitex/transport"
 )
 
 // Client is designed to provide IDL-compatible methods with call-option parameter for kitex framework.
 type Client interface {
 	StartInterview(ctx context.Context, req *interview.StartInterviewReq, callOptions ...callopt.Option) (r *interview.StartInterviewResp, err error)
 	GetChatContext(ctx context.Context, req *interview.GetChatContextReq, callOptions ...callopt.Option) (r *interview.GetChatContextResp, err error)
-	SaveChatRecord(ctx context.Context, req *interview.SaveChatRecordReq, callOptions ...callopt.Option) (r *interview.SaveChatRecordResp, err error)
+}
+
+// StreamClient is designed to provide Interface for Streaming APIs.
+type StreamClient interface {
+	ChatStream(ctx context.Context, req *interview.ChatReq, callOptions ...streamcall.Option) (stream InterviewService_ChatStreamClient, err error)
+}
+
+type InterviewService_ChatStreamClient interface {
+	streaming.Stream
+	Recv() (*interview.ChatResp, error)
 }
 
 // NewClient creates a client for the service defined in IDL.
@@ -55,7 +68,37 @@ func (p *kInterviewServiceClient) GetChatContext(ctx context.Context, req *inter
 	return p.kClient.GetChatContext(ctx, req)
 }
 
-func (p *kInterviewServiceClient) SaveChatRecord(ctx context.Context, req *interview.SaveChatRecordReq, callOptions ...callopt.Option) (r *interview.SaveChatRecordResp, err error) {
-	ctx = client.NewCtxWithCallOptions(ctx, callOptions)
-	return p.kClient.SaveChatRecord(ctx, req)
+// NewStreamClient creates a stream client for the service's streaming APIs defined in IDL.
+func NewStreamClient(destService string, opts ...streamclient.Option) (StreamClient, error) {
+	var options []client.Option
+	options = append(options, client.WithDestService(destService))
+	options = append(options, client.WithTransportProtocol(transport.GRPC))
+	options = append(options, streamclient.GetClientOptions(opts)...)
+
+	kc, err := client.NewClient(serviceInfoForStreamClient(), options...)
+	if err != nil {
+		return nil, err
+	}
+	return &kInterviewServiceStreamClient{
+		kClient: newServiceClient(kc),
+	}, nil
+}
+
+// MustNewStreamClient creates a stream client for the service's streaming APIs defined in IDL.
+// It panics if any error occurs.
+func MustNewStreamClient(destService string, opts ...streamclient.Option) StreamClient {
+	kc, err := NewStreamClient(destService, opts...)
+	if err != nil {
+		panic(err)
+	}
+	return kc
+}
+
+type kInterviewServiceStreamClient struct {
+	*kClient
+}
+
+func (p *kInterviewServiceStreamClient) ChatStream(ctx context.Context, req *interview.ChatReq, callOptions ...streamcall.Option) (stream InterviewService_ChatStreamClient, err error) {
+	ctx = client.NewCtxWithCallOptions(ctx, streamcall.GetCallOptions(callOptions))
+	return p.kClient.ChatStream(ctx, req)
 }
