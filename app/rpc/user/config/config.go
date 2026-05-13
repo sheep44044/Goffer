@@ -10,18 +10,16 @@ import (
 
 // Config 是 RPC 服务的全局配置
 type Config struct {
-	App        AppConfig        `mapstructure:"app"`
-	Server     ServerConfig     `mapstructure:"server"`
-	JWT        JWTConfig        `mapstructure:"jwt"`
-	Etcd       EtcdConfig       `mapstructure:"etcd"`
-	Service    ServiceConfig    `mapstructure:"service"`
-	DB         DBConfig         `mapstructure:"db"`
-	Redis      RedisConfig      `mapstructure:"redis"`
-	Kafka      KafkaConfig      `mapstructure:"kafka"`
-	Qdrant     QdrantConfig     `mapstructure:"qdrant"`
-	VolcEngine VolcEngineConfig `mapstructure:"volc_engine"`
-	MinIO      MinIOConfig      `mapstructure:"minio"`
-	Trace      TraceConfig      `mapstructure:"trace"`
+	App     AppConfig     `mapstructure:"app"`
+	Server  ServerConfig  `mapstructure:"server"`
+	JWT     JWTConfig     `mapstructure:"jwt"`
+	Etcd    EtcdConfig    `mapstructure:"etcd"`
+	Service ServiceConfig `mapstructure:"service"`
+	DB      DBConfig      `mapstructure:"db"`
+	Redis   RedisConfig   `mapstructure:"redis"`
+	Kafka   KafkaConfig   `mapstructure:"kafka"`
+	MinIO   MinIOConfig   `mapstructure:"minio"`
+	Trace   TraceConfig   `mapstructure:"trace"`
 }
 
 type AppConfig struct {
@@ -64,20 +62,6 @@ type RedisConfig struct {
 type KafkaConfig struct {
 	Brokers []string `mapstructure:"brokers"`
 	Topic   string   `mapstructure:"topic"`
-}
-
-type QdrantConfig struct {
-	Host   string `mapstructure:"host"`
-	Port   int    `mapstructure:"port"`
-	APIKey string `mapstructure:"api_key"`
-}
-
-type VolcEngineConfig struct {
-	Key           string `mapstructure:"key"`
-	BaseURL       string `mapstructure:"base_url"`
-	ChatModelID   string `mapstructure:"chat_model_id"`
-	EmbedModelID  string `mapstructure:"embed_model_id"`
-	VisionModelID string `mapstructure:"vision_model_id"`
 }
 
 type MinIOConfig struct {

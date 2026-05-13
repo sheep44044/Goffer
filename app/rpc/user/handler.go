@@ -89,3 +89,21 @@ func (s *UserServiceImpl) CheckResumeStatus(ctx context.Context, req *user.Check
 	resp.ParseStatus = int32(status)
 	return resp, nil
 }
+
+func (s *UserServiceImpl) UpdateResumeStatus(ctx context.Context, req *user.UpdateResumeStatusReq) (resp *user.UpdateResumeStatusResp, err error) {
+	resp = new(user.UpdateResumeStatusResp)
+
+	if len(req.ResumeId) == 0 {
+		resp.Resp = pack.BuildBaseResp(errno.ParamErr)
+		return resp, nil
+	}
+
+	err = service.NewUpdateStatusService(s.svc).UpdateResumeStatus(ctx, req)
+	if err != nil {
+		resp.Resp = pack.BuildBaseResp(err)
+		return resp, nil
+	}
+
+	resp.Resp = pack.BuildBaseResp(errno.Success)
+	return resp, nil
+}
