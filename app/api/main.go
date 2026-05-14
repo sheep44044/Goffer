@@ -10,6 +10,7 @@ import (
 	"log"
 
 	"github.com/cloudwego/hertz/pkg/app/server"
+	"github.com/hertz-contrib/cors"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -35,6 +36,13 @@ func main() {
 	// 监听 8080 端口，前端请求将发往这里
 	h := server.Default(server.WithHostPorts("0.0.0.0:8080"))
 
+	h.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"*"}, // 生产环境请换成具体的前端域名
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+	}))
 	// 5. 注册路由并挂载中间件
 	router.InitRouter(h, jwtManager)
 

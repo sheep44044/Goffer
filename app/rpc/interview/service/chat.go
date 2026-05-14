@@ -89,7 +89,7 @@ func (s *ChatService) ChatStream(ctx context.Context, req *interview.ChatReq, st
 	// 5. 异步落地“战后记忆”
 	go func(sid, userMsg, aiMsg string) {
 		bgCtx := context.Background()
-		_ = s.svc.Repo.SaveChatRecordInterview(bgCtx, sid, userMsg, aiMsg, "2")
+		_ = s.svc.Repo.SaveChatRecordInterview(bgCtx, sid, userMsg, aiMsg, "")
 	}(req.SessionId, req.Message, fullAnswer)
 
 	return nil
