@@ -210,7 +210,8 @@ var fieldIDToName_ChatMessage = map[int16]string{
 
 type GetChatContextReq struct {
 	SessionId     string `thrift:"session_id,1" frugal:"1,default,string" json:"session_id"`
-	LatestUserMsg string `thrift:"latest_user_msg,2" frugal:"2,default,string" json:"latest_user_msg"`
+	ResumeId      string `thrift:"resume_id,2" frugal:"2,default,string" json:"resume_id"`
+	LatestUserMsg string `thrift:"latest_user_msg,3" frugal:"3,default,string" json:"latest_user_msg"`
 }
 
 func NewGetChatContextReq() *GetChatContextReq {
@@ -224,11 +225,18 @@ func (p *GetChatContextReq) GetSessionId() (v string) {
 	return p.SessionId
 }
 
+func (p *GetChatContextReq) GetResumeId() (v string) {
+	return p.ResumeId
+}
+
 func (p *GetChatContextReq) GetLatestUserMsg() (v string) {
 	return p.LatestUserMsg
 }
 func (p *GetChatContextReq) SetSessionId(val string) {
 	p.SessionId = val
+}
+func (p *GetChatContextReq) SetResumeId(val string) {
+	p.ResumeId = val
 }
 func (p *GetChatContextReq) SetLatestUserMsg(val string) {
 	p.LatestUserMsg = val
@@ -243,7 +251,8 @@ func (p *GetChatContextReq) String() string {
 
 var fieldIDToName_GetChatContextReq = map[int16]string{
 	1: "session_id",
-	2: "latest_user_msg",
+	2: "resume_id",
+	3: "latest_user_msg",
 }
 
 type GetChatContextResp struct {

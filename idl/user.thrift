@@ -43,9 +43,19 @@ struct CheckResumeStatusResp {
     2: i32 parse_status
 }
 
+struct UpdateResumeStatusReq {
+    1: string resume_id
+    2: i32 status
+}
+
+struct UpdateResumeStatusResp {
+    1: base.Response resp
+}
+
 service UserService {
     RegisterResp Register(1: RegisterReq req)
     LoginResp Login(1: LoginReq req)
     UploadResumeResp UploadResume(1: UploadResumeReq req)
     CheckResumeStatusResp CheckResumeStatus(1: CheckResumeStatusReq req)
+    UpdateResumeStatusResp UpdateResumeStatus(1: UpdateResumeStatusReq req)
 }

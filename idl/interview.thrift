@@ -29,7 +29,8 @@ struct ChatMessage {
 
 struct GetChatContextReq {
     1: string session_id
-    2: string latest_user_msg // ⚠️ 必须传入：底层需要用用户发来的这句话，去 Qdrant 里做 RAG 向量检索
+    2: string resume_id
+    3: string latest_user_msg // ⚠️ 必须传入：底层需要用用户发来的这句话，去 Qdrant 里做 RAG 向量检索
 }
 
 struct GetChatContextResp {

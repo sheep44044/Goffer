@@ -15,6 +15,7 @@ type Client interface {
 	Login(ctx context.Context, req *user.LoginReq, callOptions ...callopt.Option) (r *user.LoginResp, err error)
 	UploadResume(ctx context.Context, req *user.UploadResumeReq, callOptions ...callopt.Option) (r *user.UploadResumeResp, err error)
 	CheckResumeStatus(ctx context.Context, req *user.CheckResumeStatusReq, callOptions ...callopt.Option) (r *user.CheckResumeStatusResp, err error)
+	UpdateResumeStatus(ctx context.Context, req *user.UpdateResumeStatusReq, callOptions ...callopt.Option) (r *user.UpdateResumeStatusResp, err error)
 }
 
 // NewClient creates a client for the service defined in IDL.
@@ -64,4 +65,9 @@ func (p *kUserServiceClient) UploadResume(ctx context.Context, req *user.UploadR
 func (p *kUserServiceClient) CheckResumeStatus(ctx context.Context, req *user.CheckResumeStatusReq, callOptions ...callopt.Option) (r *user.CheckResumeStatusResp, err error) {
 	ctx = client.NewCtxWithCallOptions(ctx, callOptions)
 	return p.kClient.CheckResumeStatus(ctx, req)
+}
+
+func (p *kUserServiceClient) UpdateResumeStatus(ctx context.Context, req *user.UpdateResumeStatusReq, callOptions ...callopt.Option) (r *user.UpdateResumeStatusResp, err error) {
+	ctx = client.NewCtxWithCallOptions(ctx, callOptions)
+	return p.kClient.UpdateResumeStatus(ctx, req)
 }

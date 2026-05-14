@@ -366,6 +366,82 @@ var fieldIDToName_CheckResumeStatusResp = map[int16]string{
 	2: "parse_status",
 }
 
+type UpdateResumeStatusReq struct {
+	ResumeId string `thrift:"resume_id,1" frugal:"1,default,string" json:"resume_id"`
+	Status   int32  `thrift:"status,2" frugal:"2,default,i32" json:"status"`
+}
+
+func NewUpdateResumeStatusReq() *UpdateResumeStatusReq {
+	return &UpdateResumeStatusReq{}
+}
+
+func (p *UpdateResumeStatusReq) InitDefault() {
+}
+
+func (p *UpdateResumeStatusReq) GetResumeId() (v string) {
+	return p.ResumeId
+}
+
+func (p *UpdateResumeStatusReq) GetStatus() (v int32) {
+	return p.Status
+}
+func (p *UpdateResumeStatusReq) SetResumeId(val string) {
+	p.ResumeId = val
+}
+func (p *UpdateResumeStatusReq) SetStatus(val int32) {
+	p.Status = val
+}
+
+func (p *UpdateResumeStatusReq) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("UpdateResumeStatusReq(%+v)", *p)
+}
+
+var fieldIDToName_UpdateResumeStatusReq = map[int16]string{
+	1: "resume_id",
+	2: "status",
+}
+
+type UpdateResumeStatusResp struct {
+	Resp *base.Response `thrift:"resp,1" frugal:"1,default,base.Response" json:"resp"`
+}
+
+func NewUpdateResumeStatusResp() *UpdateResumeStatusResp {
+	return &UpdateResumeStatusResp{}
+}
+
+func (p *UpdateResumeStatusResp) InitDefault() {
+}
+
+var UpdateResumeStatusResp_Resp_DEFAULT *base.Response
+
+func (p *UpdateResumeStatusResp) GetResp() (v *base.Response) {
+	if !p.IsSetResp() {
+		return UpdateResumeStatusResp_Resp_DEFAULT
+	}
+	return p.Resp
+}
+func (p *UpdateResumeStatusResp) SetResp(val *base.Response) {
+	p.Resp = val
+}
+
+func (p *UpdateResumeStatusResp) IsSetResp() bool {
+	return p.Resp != nil
+}
+
+func (p *UpdateResumeStatusResp) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("UpdateResumeStatusResp(%+v)", *p)
+}
+
+var fieldIDToName_UpdateResumeStatusResp = map[int16]string{
+	1: "resp",
+}
+
 type UserService interface {
 	Register(ctx context.Context, req *RegisterReq) (r *RegisterResp, err error)
 
@@ -374,6 +450,8 @@ type UserService interface {
 	UploadResume(ctx context.Context, req *UploadResumeReq) (r *UploadResumeResp, err error)
 
 	CheckResumeStatus(ctx context.Context, req *CheckResumeStatusReq) (r *CheckResumeStatusResp, err error)
+
+	UpdateResumeStatus(ctx context.Context, req *UpdateResumeStatusReq) (r *UpdateResumeStatusResp, err error)
 }
 
 type UserServiceRegisterArgs struct {
@@ -677,5 +755,81 @@ func (p *UserServiceCheckResumeStatusResult) String() string {
 }
 
 var fieldIDToName_UserServiceCheckResumeStatusResult = map[int16]string{
+	0: "success",
+}
+
+type UserServiceUpdateResumeStatusArgs struct {
+	Req *UpdateResumeStatusReq `thrift:"req,1" frugal:"1,default,UpdateResumeStatusReq" json:"req"`
+}
+
+func NewUserServiceUpdateResumeStatusArgs() *UserServiceUpdateResumeStatusArgs {
+	return &UserServiceUpdateResumeStatusArgs{}
+}
+
+func (p *UserServiceUpdateResumeStatusArgs) InitDefault() {
+}
+
+var UserServiceUpdateResumeStatusArgs_Req_DEFAULT *UpdateResumeStatusReq
+
+func (p *UserServiceUpdateResumeStatusArgs) GetReq() (v *UpdateResumeStatusReq) {
+	if !p.IsSetReq() {
+		return UserServiceUpdateResumeStatusArgs_Req_DEFAULT
+	}
+	return p.Req
+}
+func (p *UserServiceUpdateResumeStatusArgs) SetReq(val *UpdateResumeStatusReq) {
+	p.Req = val
+}
+
+func (p *UserServiceUpdateResumeStatusArgs) IsSetReq() bool {
+	return p.Req != nil
+}
+
+func (p *UserServiceUpdateResumeStatusArgs) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("UserServiceUpdateResumeStatusArgs(%+v)", *p)
+}
+
+var fieldIDToName_UserServiceUpdateResumeStatusArgs = map[int16]string{
+	1: "req",
+}
+
+type UserServiceUpdateResumeStatusResult struct {
+	Success *UpdateResumeStatusResp `thrift:"success,0,optional" frugal:"0,optional,UpdateResumeStatusResp" json:"success,omitempty"`
+}
+
+func NewUserServiceUpdateResumeStatusResult() *UserServiceUpdateResumeStatusResult {
+	return &UserServiceUpdateResumeStatusResult{}
+}
+
+func (p *UserServiceUpdateResumeStatusResult) InitDefault() {
+}
+
+var UserServiceUpdateResumeStatusResult_Success_DEFAULT *UpdateResumeStatusResp
+
+func (p *UserServiceUpdateResumeStatusResult) GetSuccess() (v *UpdateResumeStatusResp) {
+	if !p.IsSetSuccess() {
+		return UserServiceUpdateResumeStatusResult_Success_DEFAULT
+	}
+	return p.Success
+}
+func (p *UserServiceUpdateResumeStatusResult) SetSuccess(x interface{}) {
+	p.Success = x.(*UpdateResumeStatusResp)
+}
+
+func (p *UserServiceUpdateResumeStatusResult) IsSetSuccess() bool {
+	return p.Success != nil
+}
+
+func (p *UserServiceUpdateResumeStatusResult) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("UserServiceUpdateResumeStatusResult(%+v)", *p)
+}
+
+var fieldIDToName_UserServiceUpdateResumeStatusResult = map[int16]string{
 	0: "success",
 }

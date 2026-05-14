@@ -41,6 +41,13 @@ var serviceMethods = map[string]kitex.MethodInfo{
 		false,
 		kitex.WithStreamingMode(kitex.StreamingNone),
 	),
+	"UpdateResumeStatus": kitex.NewMethodInfo(
+		updateResumeStatusHandler,
+		newUserServiceUpdateResumeStatusArgs,
+		newUserServiceUpdateResumeStatusResult,
+		false,
+		kitex.WithStreamingMode(kitex.StreamingNone),
+	),
 }
 
 var (
@@ -179,6 +186,24 @@ func newUserServiceCheckResumeStatusResult() interface{} {
 	return user.NewUserServiceCheckResumeStatusResult()
 }
 
+func updateResumeStatusHandler(ctx context.Context, handler interface{}, arg, result interface{}) error {
+	realArg := arg.(*user.UserServiceUpdateResumeStatusArgs)
+	realResult := result.(*user.UserServiceUpdateResumeStatusResult)
+	success, err := handler.(user.UserService).UpdateResumeStatus(ctx, realArg.Req)
+	if err != nil {
+		return err
+	}
+	realResult.Success = success
+	return nil
+}
+func newUserServiceUpdateResumeStatusArgs() interface{} {
+	return user.NewUserServiceUpdateResumeStatusArgs()
+}
+
+func newUserServiceUpdateResumeStatusResult() interface{} {
+	return user.NewUserServiceUpdateResumeStatusResult()
+}
+
 type kClient struct {
 	c client.Client
 }
@@ -224,6 +249,16 @@ func (p *kClient) CheckResumeStatus(ctx context.Context, req *user.CheckResumeSt
 	_args.Req = req
 	var _result user.UserServiceCheckResumeStatusResult
 	if err = p.c.Call(ctx, "CheckResumeStatus", &_args, &_result); err != nil {
+		return
+	}
+	return _result.GetSuccess(), nil
+}
+
+func (p *kClient) UpdateResumeStatus(ctx context.Context, req *user.UpdateResumeStatusReq) (r *user.UpdateResumeStatusResp, err error) {
+	var _args user.UserServiceUpdateResumeStatusArgs
+	_args.Req = req
+	var _result user.UserServiceUpdateResumeStatusResult
+	if err = p.c.Call(ctx, "UpdateResumeStatus", &_args, &_result); err != nil {
 		return
 	}
 	return _result.GetSuccess(), nil

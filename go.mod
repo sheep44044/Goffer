@@ -10,7 +10,7 @@ require (
 	github.com/cloudwego/eino-ext/components/document/transformer/splitter/recursive v0.0.0-20260427010451-749e3706378b
 	github.com/cloudwego/eino-ext/components/embedding/ark v0.1.1
 	github.com/cloudwego/eino-ext/components/indexer/qdrant v0.0.0-20260427010451-749e3706378b
-	github.com/cloudwego/eino-ext/components/model/ark v0.1.67
+	github.com/cloudwego/eino-ext/components/model/ark v0.1.68
 	github.com/cloudwego/eino-ext/components/retriever/qdrant v0.0.0-20260427010451-749e3706378b
 	github.com/cloudwego/gopkg v0.1.8
 	github.com/cloudwego/hertz v0.10.4
@@ -104,7 +104,7 @@ require (
 	github.com/tinylib/msgp v1.6.1 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/volcengine/volc-sdk-golang v1.0.23 // indirect
-	github.com/volcengine/volcengine-go-sdk v1.2.9 // indirect
+	github.com/volcengine/volcengine-go-sdk v1.2.27 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/scram v1.1.2 // indirect
