@@ -3,6 +3,7 @@ package rpc
 import (
 	"Goffer/app/api/config"
 	"Goffer/kitex_gen/interview/interviewservice"
+	"Goffer/kitex_gen/knowledge/knowledgeservice"
 	"Goffer/kitex_gen/user/userservice"
 	middleware2 "Goffer/pkg/middleware/rpc"
 	"time"
@@ -32,11 +33,9 @@ func InitRpcClients(cfg *config.Config) {
 		client.WithResolver(r),
 	}
 
-	// 3. 初始化 User RPC 客户端
 	initUserClient(cfg.RpcClients["user"], commonOptions)
-
-	// 4. 初始化 Interview RPC 客户端
 	initInterviewClient(cfg.RpcClients["interview"], commonOptions, r)
+	initKnowledgeClient(cfg.RpcClients["knowledge"], commonOptions)
 }
 
 func initInterviewClient(cfg config.RpcClientConfig, commonOpts []client.Option, r discovery.Resolver) {
@@ -75,6 +74,19 @@ func initUserClient(cfg config.RpcClientConfig, commonOpts []client.Option) {
 		panic(err)
 	}
 	userClient = c
+}
+
+func initKnowledgeClient(cfg config.RpcClientConfig, commonOpts []client.Option) {
+	opts := append(commonOpts,
+		client.WithRPCTimeout(time.Duration(cfg.RpcTimeout)*time.Millisecond),
+		client.WithConnectTimeout(time.Duration(cfg.ConnTimeout)*time.Millisecond),
+	)
+
+	c, err := knowledgeservice.NewClient(cfg.Name, opts...)
+	if err != nil {
+		panic(err)
+	}
+	knowledgeClient = c
 }
 
 func UserClient() userservice.Client {
