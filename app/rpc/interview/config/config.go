@@ -13,9 +13,7 @@ type Config struct {
 	Etcd       EtcdConfig                 `mapstructure:"etcd"`
 	Service    ServiceConfig              `mapstructure:"service"`
 	Redis      RedisConfig                `mapstructure:"redis"`
-	Qdrant     QdrantConfig               `mapstructure:"qdrant"`
 	MongoDB    MongoDBConfig              `mapstructure:"mongodb"`
-	VolcEngine VolcEngineConfig           `mapstructure:"volc_engine"`
 	RpcClients map[string]RpcClientConfig `mapstructure:"rpc_clients"`
 	Trace      TraceConfig                `mapstructure:"trace"`
 }
@@ -43,24 +41,10 @@ type RedisConfig struct {
 	DB       int    `mapstructure:"db"`
 }
 
-type QdrantConfig struct {
-	Host   string `mapstructure:"host"`
-	Port   int    `mapstructure:"port"`
-	APIKey string `mapstructure:"api_key"`
-}
-
 type MongoDBConfig struct {
 	URI      string `mapstructure:"uri"`
 	Database string `mapstructure:"database"`
 	Timeout  int    `mapstructure:"timeout"`
-}
-
-type VolcEngineConfig struct {
-	Key           string `mapstructure:"key"`
-	BaseURL       string `mapstructure:"base_url"`
-	ChatModelID   string `mapstructure:"chat_model_id"`
-	EmbedModelID  string `mapstructure:"embed_model_id"`
-	VisionModelID string `mapstructure:"vision_model_id"`
 }
 
 type RpcClientConfig struct {

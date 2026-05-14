@@ -42,8 +42,9 @@ func (s *StartService) StartInterview(ctx context.Context, req *interview.StartI
 
 	fsmKey := fmt.Sprintf("interview:fsm:%s", sessionID)
 	fsmState := map[string]interface{}{
-		"status": "greeting", // 初始状态为打招呼
-		"round":  0,          // 对话轮次初始化为 0
+		"status":    "greeting", // 初始状态为打招呼
+		"round":     0,          // 对话轮次初始化为 0
+		"resume_id": req.ResumeId,
 	}
 	fsmBytes, _ := json.Marshal(fsmState)
 

@@ -16,12 +16,12 @@ type ChatMessage struct {
 
 // ChatContext 代表获取到的上下文聚合数据
 type ChatContext struct {
-	FsmState  string
-	History   []*ChatMessage
-	RagChunks string
+	FsmState string
+	History  []*ChatMessage
+	ResumeId string
 }
 
-func (s *RepoService) GetChatContextInterview(ctx context.Context, SessionId, LatestUserMsg string) (*ChatContext, error) {
+func (s *RepoService) GetChatContextInterview(ctx context.Context, SessionId string) (*ChatContext, error) {
 	// 1. 从 Redis 获取当前环节状态
 	fsmKey := fmt.Sprintf("interview:fsm:%s", SessionId)
 	fsmStr, err := s.Cache.Get(ctx, fsmKey).Result()
@@ -41,19 +41,6 @@ func (s *RepoService) GetChatContextInterview(ctx context.Context, SessionId, La
 		return nil, fmt.Errorf("failed to fetch chat history from MongoDB: %w", err)
 	}
 
-	// 3. 用 req.LatestUserMsg 去 Qdrant 进行向量检索
-	ragChunks, err := s.VectorStore.Search(ctx, LatestUserMsg)
-	if err != nil {
-		return nil, err
-	}
-
-	// 4. 将 Qdrant 检索到的 Document 组装成纯文本上下文
-	var resumeContext string
-	for i, chunk := range ragChunks {
-		// 根据你的 chunk 结构拼接，提供给大模型参考
-		resumeContext += fmt.Sprintf("[片段%d] %s\n", i+1, chunk.Content)
-	}
-
 	// 5. 组装并返回上下文给外层
 	// 注意：这里的 interview.Message 假设是你 proto 文件中定义的 message 结构
 	respMessages := make([]*ChatMessage, 0, len(history))
@@ -70,10 +57,15 @@ func (s *RepoService) GetChatContextInterview(ctx context.Context, SessionId, La
 		currentStatus = status
 	}
 
+	currentResumeID := ""
+	if rID, ok := fsmState["resume_id"].(string); ok {
+		currentResumeID = rID
+	}
+
 	return &ChatContext{
-		FsmState:  currentStatus, // 例如: "greeting", "project_deep_dive"
-		History:   respMessages,  // 组装好的最近 5 轮对话数组
-		RagChunks: resumeContext, // 从 Qdrant 捞出来的简历文本片段
+		FsmState: currentStatus, // 例如: "greeting", "project_deep_dive"
+		History:  respMessages,  // 组装好的最近 5 轮对话数组
+		ResumeId: currentResumeID,
 	}, nil
 }
 

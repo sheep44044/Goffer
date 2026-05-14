@@ -23,7 +23,6 @@ func InitUserClient(cfg *config.Config) userservice.Client {
 		client.WithMuxConnection(1),
 		client.WithFailureRetry(retry.NewFailurePolicy()),
 		client.WithResolver(r),
-		// 读取 Interview 配置里的 UserClient 超时设置
 		client.WithRPCTimeout(time.Duration(cfg.RpcClients["user"].RpcTimeout) * time.Millisecond),
 		client.WithConnectTimeout(time.Duration(cfg.RpcClients["user"].ConnTimeout) * time.Millisecond),
 	}

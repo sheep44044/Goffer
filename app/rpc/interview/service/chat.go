@@ -2,13 +2,15 @@ package service
 
 import (
 	"Goffer/app/rpc/interview/svc"
+	"Goffer/kitex_gen/agent" // 引入你刚生成的 agent thrift 代码
 	"Goffer/kitex_gen/interview"
+	"Goffer/pkg/contextutil"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
-
-	"github.com/cloudwego/eino/schema"
+	"time"
 )
 
 type ChatService struct {
@@ -16,95 +18,129 @@ type ChatService struct {
 }
 
 func NewChatService(svc *svc.ServiceContext) *ChatService {
-	return &ChatService{
-		svc: svc,
-	}
+	return &ChatService{svc: svc}
 }
 
 func (s *ChatService) ChatStream(ctx context.Context, req *interview.ChatReq, stream interview.InterviewService_ChatStreamServer) error {
-	// ==========================================
-	// 1. 获取“战前情报” (内部直接查数据库，不需要走 RPC)
-	// ==========================================
-	// 假设你把 GetChatContext 的逻辑挪到了 db/logic 里面
-	contextInfo, err := s.svc.Repo.GetChatContextInterview(ctx, req.SessionId, req.Message)
+	err := s.advanceFSM(ctx, req.SessionId)
+	if err != nil {
+		log.Printf("⚠️ 推进状态机失败，但不阻断聊天: %v", err)
+	}
+	// 1. 获取业务情报 (查 DB/Redis)
+	// ⚠️ 注意：这里的 contextInfo 里现在应该包含 ResumeId 了（见下方的修改）
+	contextInfo, err := s.svc.Repo.GetChatContextInterview(ctx, req.SessionId)
 	if err != nil {
 		return fmt.Errorf("获取上下文失败: %w", err)
 	}
 
-	// ==========================================
-	// 2. 组装大模型 Prompt
-	// ==========================================
-	sysPrompt := fmt.Sprintf(`你是一个专业的 AI 面试官。
-当前面试环节：%s
+	userID, _ := contextutil.GetUserIDFromRPC(ctx)
 
-参考用户的简历内容如下：%s
-
-请根据上述信息，结合上下文对用户进行追问。要求专业、简练，像真实的面试官一样对话。`, contextInfo.FsmState, contextInfo.RagChunks)
-
-	// 构建 Eino 的标准消息数组 (复用你原来的逻辑)
-	messages := []*schema.Message{
-		schema.SystemMessage(sysPrompt),
-	}
+	// 🌟 核心修复 1：解决 Thrift 类型不匹配问题 (手动映射)
+	var agentHistory []*agent.Message
 	for _, h := range contextInfo.History {
-		if h.Role == "user" {
-			messages = append(messages, schema.UserMessage(h.Content))
-		} else {
-			messages = append(messages, schema.AssistantMessage(h.Content, nil))
-		}
+		agentHistory = append(agentHistory, &agent.Message{
+			Role:    h.Role,
+			Content: h.Content,
+		})
 	}
-	messages = append(messages, schema.UserMessage(req.Message))
 
 	// ==========================================
-	// 3. 发起流式请求 (使用你刚封装好的 AIService)
+	// 🌟 核心修复 2：组装完整的 Agent 请求参数
 	// ==========================================
-	aiStreamReader, err := s.svc.AI.GetChatStream(ctx, messages)
-	if err != nil {
-		return fmt.Errorf("调用大模型失败: %w", err)
+	agentReq := &agent.ChatStreamReq{
+		SessionId: req.SessionId,
+		UserId:    userID,
+		Message:   req.Message,
+		FsmState:  contextInfo.FsmState,
+		ResumeId:  contextInfo.ResumeId, // 🌟 从后台上下文拿，而不是前端传！
+		History:   agentHistory,         // 🌟 传入转换后的类型
 	}
-	defer aiStreamReader.Close()
+
+	// 3. 呼叫 Agent 服务，开启 AI 思考流 (RPC Stream)
+	agentStream, err := s.svc.AgentStreamClient.ChatStream(ctx, agentReq)
+	if err != nil {
+		return fmt.Errorf("调用 Agent 服务失败: %w", err)
+	}
 
 	fullAnswer := ""
 
-	// ==========================================
-	// 4. 循环接收大模型的字，并通过 RPC Stream 推给网关
-	// ==========================================
+	// 4. 循环接收 Agent 的流，并无缝转发给 Gateway
 	for {
-		msg, err := aiStreamReader.Recv()
+		agentResp, err := agentStream.Recv()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("流式读取异常: %w", err)
+			return fmt.Errorf("读取 Agent 流异常: %w", err)
 		}
 
-		// 重点修复：go-openai 提取流式 chunk 的正确写法
-		if len(msg.Choices) > 0 {
-			chunk := msg.Choices[0].Delta.Content
-			if chunk != "" {
-				fullAnswer += chunk
-
-				// 将大模型吐出的片段，通过 RPC 发送给外层的 API 网关
-				err = stream.Send(&interview.ChatResp{
-					Chunk: chunk,
-				})
-				if err != nil {
-					log.Printf("网关断开连接，停止发送: %v", err)
-					break // 如果网关(或者用户前端)断开了，终止大模型推理，节约 Token
-				}
+		if agentResp.Chunk != "" {
+			fullAnswer += agentResp.Chunk
+			err = stream.Send(&interview.ChatResp{
+				Chunk: agentResp.Chunk,
+			})
+			if err != nil {
+				log.Printf("网关断开连接，停止发送: %v", err)
+				break
 			}
 		}
 	}
-	// ==========================================
-	// 5. 内部异步调用数据库，落地“战后记忆”
-	// ==========================================
+
+	// 5. 异步落地“战后记忆”
 	go func(sid, userMsg, aiMsg string) {
 		bgCtx := context.Background()
-		// 直接调用数据库层保存，不再走网络 RPC
-		err := s.svc.Repo.SaveChatRecordInterview(bgCtx, sid, userMsg, aiMsg, "2")
-		if err != nil {
-			log.Printf("异步保存聊天记录失败: %v", err)
-		}
+		_ = s.svc.Repo.SaveChatRecordInterview(bgCtx, sid, userMsg, aiMsg, "2")
 	}(req.SessionId, req.Message, fullAnswer)
 
 	return nil
+}
+
+func (s *ChatService) advanceFSM(ctx context.Context, sessionID string) error {
+	fsmKey := fmt.Sprintf("interview:fsm:%s", sessionID)
+
+	// 1. 获取当前状态
+	fsmStr, err := s.svc.Cache.Get(ctx, fsmKey).Result()
+	if err != nil {
+		return fmt.Errorf("读取状态机失败: %w", err)
+	}
+
+	var fsmState map[string]interface{}
+	if err := json.Unmarshal([]byte(fsmStr), &fsmState); err != nil {
+		return fmt.Errorf("解析状态机失败: %w", err)
+	}
+
+	// 2. 推进逻辑
+	currentStatus := fsmState["status"].(string)
+	round := int(fsmState["round"].(float64))
+
+	round++
+	nextStatus := currentStatus
+
+	switch currentStatus {
+	case "greeting":
+		if round >= 1 {
+			nextStatus = "tech_foundation"
+			round = 0
+		}
+	case "tech_foundation":
+		if round >= 4 {
+			nextStatus = "tech_architecture"
+			round = 0
+		}
+	case "tech_architecture":
+		if round >= 4 {
+			nextStatus = "evaluator"
+			round = 0
+		}
+	case "evaluator":
+		return nil // 已经是最终状态，不推进，直接返回
+	}
+
+	// 3. 构造新状态并写回 Redis
+	fsmState["status"] = nextStatus
+	fsmState["round"] = round
+	// resume_id 天然还在 fsmState 里，不需要额外处理！
+
+	fsmBytes, _ := json.Marshal(fsmState)
+	return s.svc.Cache.Set(ctx, fsmKey, fsmBytes, 2*time.Hour).Err()
 }

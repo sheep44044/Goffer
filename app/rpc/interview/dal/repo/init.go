@@ -2,21 +2,18 @@ package repo
 
 import (
 	"Goffer/app/rpc/interview/dal/mongodb"
-	"Goffer/app/rpc/interview/dal/qdrant"
 
 	"github.com/redis/go-redis/v9"
 )
 
 type RepoService struct {
-	Cache       *redis.Client
-	Mongo       *mongodb.MongoManager
-	VectorStore *qdrant.VectorStore
+	Cache *redis.Client
+	Mongo *mongodb.MongoManager
 }
 
-func NewGetChatService(Cache *redis.Client, Mongo *mongodb.MongoManager, VectorStore *qdrant.VectorStore) *RepoService {
+func NewGetChatService(Cache *redis.Client, Mongo *mongodb.MongoManager) *RepoService {
 	return &RepoService{
-		Cache:       Cache,
-		Mongo:       Mongo,
-		VectorStore: VectorStore,
+		Cache: Cache,
+		Mongo: Mongo,
 	}
 }

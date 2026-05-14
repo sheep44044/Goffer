@@ -2,7 +2,9 @@ package service
 
 import (
 	"Goffer/app/rpc/interview/svc"
+	"Goffer/kitex_gen/agent"
 	"Goffer/kitex_gen/interview"
+	"Goffer/pkg/contextutil"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -38,17 +40,28 @@ func (s *GetChatService) GetChatContextInterview(ctx context.Context, req *inter
 		return nil, fmt.Errorf("failed to fetch chat history from MongoDB: %w", err)
 	}
 
-	// 3. 用 req.LatestUserMsg 去 Qdrant 进行向量检索
-	ragChunks, err := s.svc.VectorStore.Search(ctx, req.LatestUserMsg)
+	userID, _ := contextutil.GetUserIDFromRPC(ctx)
+
+	topK := int32(3)
+	ragResp, err := s.svc.AgentClient.RetrieveContext(ctx, &agent.RetrieveReq{
+		Query:      req.LatestUserMsg,
+		UserId:     userID,
+		ResumeId:   &req.ResumeId,
+		Collection: "goffer_resumes",
+		TopK:       &topK,
+	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("RAG检索失败: %w", err)
 	}
 
-	// 4. 将 Qdrant 检索到的 Document 组装成纯文本上下文
+	// 4. 将 Qdrant 检索到的结果组装成纯文本上下文
 	var resumeContext string
-	for i, chunk := range ragChunks {
-		// 根据你的 chunk 结构拼接，提供给大模型参考
-		resumeContext += fmt.Sprintf("[片段%d] %s\n", i+1, chunk.Content)
+	if ragResp != nil && len(ragResp.Contexts) > 0 {
+		for i, text := range ragResp.Contexts {
+			resumeContext += fmt.Sprintf("[片段%d] %s\n", i+1, text)
+		}
+	} else {
+		resumeContext = "（未检索到简历相关信息）"
 	}
 
 	// 5. 组装并返回上下文给外层
