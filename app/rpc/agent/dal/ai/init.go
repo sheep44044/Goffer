@@ -1,7 +1,7 @@
 package ai
 
 import (
-	"Goffer/app/rpc/user/config"
+	"Goffer/app/rpc/agent/config"
 
 	"github.com/sashabaranov/go-openai"
 )

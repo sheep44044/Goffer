@@ -1,8 +1,8 @@
-package worker
+package resume
 
 import (
-	"Goffer/app/rpc/user/mq"
-	"Goffer/app/rpc/user/svc"
+	"Goffer/app/rpc/agent/svc"
+	"Goffer/kitex_gen/user"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,25 +12,22 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
-// ResumeWorker 封装 Kafka 消费者，并持有 ServiceContext
 type ResumeWorker struct {
-	svcCtx *svc.ServiceContext
+	svc *svc.ServiceContext
 }
 
-// NewResumeWorker 构造函数
-func NewResumeWorker(svcCtx *svc.ServiceContext) *ResumeWorker {
+func NewResumeWorker(svc *svc.ServiceContext) *ResumeWorker {
 	return &ResumeWorker{
-		svcCtx: svcCtx,
+		svc: svc,
 	}
 }
 
-// Start 启动消费者循环 (此方法会阻塞，所以外部需要用 goroutine 调用)
 func (w *ResumeWorker) Start() {
 	// 从 svcCtx 的 Config 中读取 Kafka 配置
 	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:     w.svcCtx.Config.Kafka.Brokers,
+		Brokers:     w.svc.Config.Kafka.Brokers,
 		GroupID:     "resume-parser-group", // 或者从配置读取
-		Topic:       w.svcCtx.Config.Kafka.Topic,
+		Topic:       w.svc.Config.Kafka.ResumeTopic,
 		StartOffset: kafka.FirstOffset,
 	})
 	defer reader.Close()
@@ -45,7 +42,7 @@ func (w *ResumeWorker) Start() {
 			continue
 		}
 
-		var task mq.ParseTask
+		var task ResumeParseTask
 		if err := json.Unmarshal(msg.Value, &task); err != nil {
 			log.Printf("解析 JSON 失败的脏数据: %v", err)
 			reader.CommitMessages(ctx, msg) // 脏数据直接提交丢弃
@@ -54,15 +51,17 @@ func (w *ResumeWorker) Start() {
 
 		fmt.Printf("收到解析任务... ResumeID: %s\n", task.ResumeID)
 
-		// 调用处理函数，把 svcCtx 和 ctx 传进去
-		err = w.handleResumeParse(ctx, task)
+		// 调用处理函数，把 svc 和 ctx 传进去
+		err = w.HandleResumeParse(ctx, task)
 		if err != nil {
 			// 经过多次重试依然失败，进入死信处理流程
 			log.Printf("【严重异常】任务最终失败放弃 (ResumeID: %s): %v", task.ResumeID, err)
 
 			// 1. 更新数据库状态为“解析失败” (非常重要，否则前端一直显示解析中)
-			_ = w.svcCtx.DB.UpdateResumeStatus(ctx, task.ResumeID, -1) // 假设 -1 表示失败
-
+			_, err = w.svc.UserClient.UpdateResumeStatus(ctx, &user.UpdateResumeStatusReq{
+				ResumeId: task.ResumeID,
+				Status:   -1,
+			}) // 假设 -1 表示失败
 			// 2. (可选) 将这条 task 序列化后发往另一个专门存错误的 Kafka Topic (死信队列 DLQ)，或者记录到 MySQL 的 error_log 表
 		} else {
 			fmt.Printf("任务成功完成 (ResumeID: %s)\n", task.ResumeID)
@@ -78,12 +77,12 @@ func (w *ResumeWorker) Start() {
 	}
 }
 
-func (w *ResumeWorker) processWithRetry(ctx context.Context, task mq.ParseTask) error {
+func (w *ResumeWorker) processWithRetry(ctx context.Context, task ResumeParseTask) error {
 	maxRetries := 3
 	var err error
 
 	for i := 0; i < maxRetries; i++ {
-		err = w.handleResumeParse(ctx, task)
+		err = w.HandleResumeParse(ctx, task)
 		if err == nil {
 			return nil // 成功直接返回
 		}

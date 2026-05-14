@@ -1,22 +1,28 @@
-package worker
+package resume
 
 import (
-	"Goffer/app/rpc/user/mq"
+	"Goffer/kitex_gen/user"
 	"Goffer/pkg/pdfparser"
 	"context"
 	"fmt"
 
 	"github.com/cloudwego/eino-ext/components/document/transformer/splitter/markdown"
 	"github.com/cloudwego/eino-ext/components/document/transformer/splitter/recursive"
+	"github.com/cloudwego/eino-ext/components/indexer/qdrant"
 	"github.com/cloudwego/eino/schema"
 )
 
-// handleResumeParse 真正的业务处理逻辑
-func (w *ResumeWorker) handleResumeParse(ctx context.Context, task mq.ParseTask) error {
+type ResumeParseTask struct {
+	ResumeID string `json:"resume_id"`
+	FileURL  string `json:"file_url"`
+	FileType string `json:"file_type"`
+}
+
+func (w *ResumeWorker) HandleResumeParse(ctx context.Context, task ResumeParseTask) error {
 	fmt.Printf("开始处理简历 - URL: %s, 类型: %s\n", task.FileURL, task.FileType)
 
 	// 1. 下载文件
-	fileBytes, err := w.svcCtx.Minio.DownloadFile(ctx, task.FileURL)
+	fileBytes, err := w.svc.Minio.DownloadFile(ctx, task.FileURL)
 	if err != nil {
 		return err
 	}
@@ -25,7 +31,7 @@ func (w *ResumeWorker) handleResumeParse(ctx context.Context, task mq.ParseTask)
 	var parsedText string
 	// 2. AI 提取文本
 	if task.FileType == "png" || task.FileType == "jpg" || task.FileType == "jpeg" {
-		parsedText, err = w.svcCtx.AI.ParseResumeToMarkdown(ctx, fileBytes, task.FileType)
+		parsedText, err = w.svc.AI.ParseResumeToMarkdown(ctx, fileBytes, task.FileType)
 		if err != nil {
 			return err
 		}
@@ -54,21 +60,30 @@ func (w *ResumeWorker) handleResumeParse(ctx context.Context, task mq.ParseTask)
 		chunk.MetaData["resume_id"] = task.ResumeID
 	}
 
-	// 见证魔法时刻：这一行代码搞定了调用大模型 Embedding 并存入 Qdrant
-	ids, err := w.svcCtx.VectorStore.Indexer.Store(ctx, chunks)
+	// 4. 存入 Qdrant (RAG 服务拥有 Qdrant 的绝对控制权)
+	indexer, err := qdrant.NewIndexer(ctx, &qdrant.Config{
+		Client:     w.svc.QdrantClient, // 复用全局的那个基础连接
+		Collection: "goffer_resumes",   // 动态指定！如果是题库任务，这里就传题库的 Collection 名
+	})
+	if err != nil {
+		return fmt.Errorf("初始化 Qdrant Indexer 失败: %w", err)
+	}
+
+	ids, err := indexer.Store(ctx, chunks)
 	if err != nil {
 		return fmt.Errorf("向量入库失败: %w", err)
 	}
 
 	fmt.Printf("-> 4. 向量入库完成，成功存入 %d 条数据，Qdrant 返回的 ID 列表: %v\n", len(ids), ids)
-	// 5. 更新 MySQL 状态
 
-	err = w.svcCtx.DB.UpdateResumeStatus(ctx, task.ResumeID, 2)
+	// 5. 【关键改变】不直接操作 DB，而是通过 RPC 通知 User 服务更新状态
+	_, err = w.svc.UserClient.UpdateResumeStatus(ctx, &user.UpdateResumeStatusReq{
+		ResumeId: task.ResumeID,
+		Status:   2,
+	})
 	if err != nil {
-		return err
+		return fmt.Errorf("回调 User 服务更新状态失败: %w", err)
 	}
-	fmt.Println("-> 5. 状态更新完成")
-
 	return nil
 }
 

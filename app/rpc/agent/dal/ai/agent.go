@@ -6,43 +6,9 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/sashabaranov/go-openai"
 )
-
-func (s *AIService) GetEmbedding(ctx context.Context, text string) ([]float32, error) {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
-	text = strings.ReplaceAll(text, "\n", " ")
-	safeText := truncateContent(text, 2000)
-
-	resp, err := s.client.CreateEmbeddings(
-		ctx,
-		openai.EmbeddingRequest{
-			Input: []string{safeText},
-			Model: openai.EmbeddingModel(s.cfg.VolcEngine.EmbedModelID),
-		},
-	)
-
-	if err != nil {
-		return nil, err
-	}
-	if len(resp.Data) == 0 {
-		return nil, fmt.Errorf("embedding data is empty")
-	}
-
-	return resp.Data[0].Embedding, nil
-}
-
-func truncateContent(content string, limit int) string {
-	if utf8.RuneCountInString(content) <= limit {
-		return content
-	}
-	runes := []rune(content)
-	return string(runes[:limit])
-}
 
 func (s *AIService) ParseResumeToMarkdown(ctx context.Context, fileData []byte, mimeType string) (string, error) {
 	// 视觉模型处理比较慢，超时时间建议设置长一点，比如 60 秒
