@@ -10,8 +10,10 @@ import (
 
 	"github.com/cloudwego/kitex/client"
 	"github.com/cloudwego/kitex/client/streamclient"
+	"github.com/cloudwego/kitex/pkg/circuitbreak"
 	"github.com/cloudwego/kitex/pkg/discovery"
 	"github.com/cloudwego/kitex/pkg/retry"
+	"github.com/kitex-contrib/obs-opentelemetry/tracing"
 	etcd "github.com/kitex-contrib/registry-etcd"
 )
 
@@ -23,13 +25,30 @@ func InitRpcClients(cfg *config.Config) {
 		panic(err)
 	}
 
+	fp := retry.NewFailurePolicy()
+	fp.WithMaxRetryTimes(2) // 最多重试 2 次
+	fp.WithFixedBackOff(20)
+
+	// 2. 配置熔断策略 (Circuit Breaker)
+	cbs := circuitbreak.NewCBSuite(circuitbreak.RPCInfo2Key)
+	// 源码中默认的参数是 ErrRate: 0.5, MinSample: 200。
+	// 如果你想自定义为 100 次样本就触发，可以调用 UpdateInstanceCBConfig：
+	cbs.UpdateInstanceCBConfig(circuitbreak.CBConfig{
+		Enable:    true,
+		ErrRate:   0.5, // 50% 错误率触发熔断
+		MinSample: 100, // 最小样本数改为 100
+	})
+
 	// 2. 提取公共的配置项 (像公用的中间件、复用连接等)
 	commonOptions := []client.Option{
 		client.WithMiddleware(middleware2.CommonMiddleware),
 		client.WithInstanceMW(middleware2.ClientMiddleware),
 		client.WithMuxConnection(1),
-		client.WithFailureRetry(retry.NewFailurePolicy()),
-		// client.WithSuite(trace.NewDefaultClientSuite()),   // tracer
+		client.WithFailureRetry(fp),
+		client.WithConnectTimeout(50 * time.Millisecond),
+		client.WithRPCTimeout(3 * time.Second),
+		client.WithCircuitBreaker(cbs),
+		client.WithSuite(tracing.NewClientSuite()),
 		client.WithResolver(r),
 	}
 

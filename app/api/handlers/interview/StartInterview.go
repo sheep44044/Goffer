@@ -1,41 +1,52 @@
 package interview
 
 import (
+	"Goffer/app/api/handlers/pack"
 	"Goffer/app/api/rpc"
 	"Goffer/kitex_gen/interview"
-	context2 "Goffer/pkg/contextutil"
+	"Goffer/pkg/contextutil"
 	"Goffer/pkg/errno"
+	"Goffer/pkg/logger"
 	"context"
 
 	"github.com/cloudwego/hertz/pkg/app"
+	"go.uber.org/zap"
 )
 
 func StartInterview(ctx context.Context, c *app.RequestContext) {
 	var startVar StartParam
 	if err := c.Bind(&startVar); err != nil {
-		SendResponse(c, errno.ConvertErr(err), nil)
+		pack.SendResponse(c, errno.ConvertErr(err), nil)
 		return
 	}
 
-	userID, err := context2.GetUserIDFromGateway(c)
+	userID, err := contextutil.GetUserIDFromGateway(c)
 	if err != nil {
-		SendResponse(c, errno.AuthorizationFailedErr, nil)
+		pack.SendResponse(c, errno.AuthorizationFailedErr, nil)
 		return
 	}
 
 	if len(userID) == 0 {
-		SendResponse(c, errno.ParamErr, nil)
+		pack.SendResponse(c, errno.ParamErr, nil)
 		return
 	}
+
+	logger.InfoCtx(ctx, "开始面试请求",
+		zap.String("user_id", userID),
+		zap.String("resume_id", startVar.ResumeId))
 
 	resp, err := rpc.StartInterview(ctx, &interview.StartInterviewReq{
 		UserId:   userID,
 		ResumeId: startVar.ResumeId,
 	})
 	if err != nil {
-		SendResponse(c, errno.ConvertErr(err), nil)
+		logger.ErrorCtx(ctx, "开始面试失败",
+			zap.String("user_id", userID),
+			zap.String("resume_id", startVar.ResumeId),
+			zap.Error(err))
+		pack.SendResponse(c, errno.ConvertErr(err), nil)
 		return
 	}
 
-	SendResponse(c, errno.Success, resp.OpeningRemark)
+	pack.SendResponse(c, errno.Success, resp.OpeningRemark)
 }

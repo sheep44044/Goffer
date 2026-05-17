@@ -2,15 +2,17 @@ package main
 
 import (
 	"Goffer/app/api/config"
-
 	"Goffer/app/api/router"
 	"Goffer/app/api/rpc"
 	"Goffer/pkg/jwt"
+	"Goffer/pkg/telemetry"
+	"context"
 	"fmt"
 	"log"
 
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/hertz-contrib/cors"
+	"github.com/hertz-contrib/obs-opentelemetry/tracing"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -34,8 +36,17 @@ func main() {
 
 	// 4. 初始化 Hertz 引擎
 	// 监听 8080 端口，前端请求将发往这里
-	h := server.Default(server.WithHostPorts("0.0.0.0:8080"))
+	// 1. 初始化全局 OTel，指向本地 4317 端口
+	shutdown, _ := telemetry.InitOTel("goffer-api-gateway", "localhost:4317")
+	defer shutdown(context.Background())
 
+	// 2. 注入 Hertz OTel Tracer
+	tracer, config := tracing.NewServerTracer()
+	h := server.Default(
+		server.WithHostPorts("0.0.0.0:8080"),
+		tracer,
+	)
+	h.Use(tracing.ServerMiddleware(config))
 	h.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"*"}, // 生产环境请换成具体的前端域名
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},

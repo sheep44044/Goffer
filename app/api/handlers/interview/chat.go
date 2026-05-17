@@ -3,12 +3,14 @@ package interview
 import (
 	"Goffer/app/api/rpc"
 	"Goffer/kitex_gen/interview"
+	"Goffer/pkg/logger"
 	"context"
 	"io"
-	"log"
+	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/hertz-contrib/sse"
+	"go.uber.org/zap"
 )
 
 func ChatStream(ctx context.Context, c *app.RequestContext) {
@@ -22,14 +24,23 @@ func ChatStream(ctx context.Context, c *app.RequestContext) {
 	c.SetStatusCode(200)
 	stream := sse.NewStream(c)
 
+	logger.InfoCtx(ctx, "收到流式对话请求", zap.String("session_id", req.SessionID), zap.String("content", req.Content))
+
+	streamCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+
 	// 2. 调用底层的 Kitex RPC 流式接口 (补充了被遗漏的 .ChatStream 方法名)
-	rpcStream, err := rpc.ChatStream(ctx, &interview.ChatReq{
+	rpcStream, err := rpc.ChatStream(streamCtx, &interview.ChatReq{
 		SessionId: req.SessionID,
 		Message:   req.Content, // 映射到 RPC IDL 中定义的字段
 	})
 	if err != nil {
-		log.Printf("调用内部RPC流式接口失败: %v", err)
-		c.JSON(500, map[string]string{"error": "内部服务调用失败"})
+		logger.ErrorCtx(ctx, "调用内部 RPC 流式接口失败:", zap.Error(err))
+		_ = stream.Publish(&sse.Event{
+			Event: "message",
+			Data:  []byte("（系统提示：AI 面试官暂时走神了，请稍后重试）"),
+		})
+		_ = stream.Publish(&sse.Event{Event: "done", Data: []byte("[DONE]")})
 		return
 	}
 
@@ -40,7 +51,7 @@ func ChatStream(ctx context.Context, c *app.RequestContext) {
 			break // 后端微服务说：“我发完了”
 		}
 		if err != nil {
-			log.Printf("读取 RPC 流异常: %v", err)
+			logger.ErrorCtx(ctx, "读取 RPC 流中途异常", zap.Error(err))
 			break
 		}
 
@@ -50,7 +61,7 @@ func ChatStream(ctx context.Context, c *app.RequestContext) {
 			Data:  []byte(resp.Chunk),
 		})
 		if err != nil {
-			log.Printf("SSE 推送前端失败(用户可能已断开): %v", err)
+			logger.ErrorCtx(ctx, "SSE 推送前端失败(用户可能已断开)", zap.Error(err))
 			break
 		}
 	}

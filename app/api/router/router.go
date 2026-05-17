@@ -8,9 +8,11 @@ import (
 	"Goffer/pkg/middleware"
 
 	"github.com/cloudwego/hertz/pkg/app/server"
+	"golang.org/x/time/rate"
 )
 
 func InitRouter(h *server.Hertz, jwtManager *jwt.JWTManager) {
+	h.Use(middleware.GlobalRateLimitMiddleware(rate.Limit(100), 200))
 
 	publicGroup := h.Group("/api/user")
 	{
