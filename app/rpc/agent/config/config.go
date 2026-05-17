@@ -13,11 +13,19 @@ type Config struct {
 	Etcd       EtcdConfig                 `mapstructure:"etcd"`
 	Service    ServiceConfig              `mapstructure:"service"`
 	Kafka      KafkaConfig                `mapstructure:"kafka"`
+	Redis      RedisConfig                `mapstructure:"redis"`
 	Qdrant     QdrantConfig               `mapstructure:"qdrant"`
 	MinIO      MinIOConfig                `mapstructure:"minio"`
 	VolcEngine VolcEngineConfig           `mapstructure:"volc_engine"`
 	RpcClients map[string]RpcClientConfig `mapstructure:"rpc_clients"`
 	Trace      TraceConfig                `mapstructure:"trace"`
+}
+
+type RedisConfig struct {
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
+	Password string `mapstructure:"password"`
+	DB       int    `mapstructure:"db"`
 }
 
 type AppConfig struct {

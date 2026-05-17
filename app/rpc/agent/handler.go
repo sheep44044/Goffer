@@ -7,11 +7,13 @@ import (
 	"Goffer/app/rpc/user/pack"
 	"Goffer/kitex_gen/agent"
 	"Goffer/pkg/errno"
+	"Goffer/pkg/logger"
 	"context"
 	"fmt"
 	"io"
 
 	"github.com/cloudwego/eino/schema"
+	"go.uber.org/zap"
 )
 
 type AgentServiceImpl struct {
@@ -30,9 +32,12 @@ func (s *AgentServiceImpl) RetrieveContext(ctx context.Context, req *agent.Retri
 		return resp, nil
 	}
 
+	logger.InfoCtx(ctx, "RPC 检索请求", zap.String("user_id", req.UserId), zap.String("collection", req.Collection))
+
 	retData, err := retrieve.NewRetrieveService(s.svc).RetrieveContext(ctx, req)
 	if err != nil {
-		resp.Resp = pack.BuildBaseResp(err)
+		logger.ErrorCtx(ctx, "检索失败", zap.Error(err))
+		resp.Resp = pack.BuildBaseRespCtx(ctx, err)
 		return resp, nil
 	}
 
@@ -45,8 +50,15 @@ func (s *AgentServiceImpl) RetrieveContext(ctx context.Context, req *agent.Retri
 }
 
 func (s *AgentServiceImpl) ChatStream(req *agent.ChatStreamReq, stream agent.AgentService_ChatStreamServer) error {
-	// 1. 将 Thrift 请求转换为 Eino DAG 需要的输入格式
-	ctx := context.Background()
+	// 使用 stream.Context() 继承上游 OTel TraceID，而非 context.Background()
+	ctx, cancel := context.WithCancel(stream.Context())
+	defer cancel()
+
+	roomID := req.SessionId // SessionId 即面试房间 ID
+	s.svc.CancelManager.Register(roomID, cancel)
+	defer s.svc.CancelManager.Remove(roomID)
+
+	// 2. 将 Thrift 请求转换为 Eino DAG 需要的输入格式
 	var einoHistory []*schema.Message
 	for _, msg := range req.History {
 		if msg.Role == "user" {
@@ -65,31 +77,35 @@ func (s *AgentServiceImpl) ChatStream(req *agent.ChatStreamReq, stream agent.Age
 		History:   einoHistory,
 	}
 
-	// 2. 调用我们在 bot 模块写好的管理器
+	// 3. 使用可取消的 ctx 调用 Eino DAG
 	botName := getBotNameByFsmState(req.FsmState)
 	aiStream, err := bot.GetBotManager().StreamAnswer(ctx, botName, input)
 	if err != nil {
-		return fmt.Errorf("Agent 思考失败: %v", err)
+		return fmt.Errorf("Agent 思考失败: %w", err)
 	}
 	defer aiStream.Close()
 
-	// 3. 循环接收 Eino 生成的文字，并通过流式接口发送给 Interview 服务
+	// 4. 循环接收 Eino 生成的文字，并通过流式接口发送给 Interview 服务
 	for {
 		msg, err := aiStream.Recv()
 		if err == io.EOF {
-			break // AI 说完了
+			break
 		}
 		if err != nil {
+			if ctx.Err() != nil {
+				logger.InfoCtx(ctx, "Agent 推理被用户打断", zap.String("room", roomID))
+				return nil
+			}
 			return err
 		}
 
 		if msg.Content != "" {
-			// 把切片推回给 Interview 客户端
 			err = stream.Send(&agent.ChatStreamResp{
 				Chunk: msg.Content,
 			})
 			if err != nil {
-				return err // 如果推送失败（比如客户端断开了），直接退出
+				logger.ErrorCtx(ctx, "流式推送失败(Interview 可能断开)", zap.String("room", roomID), zap.Error(err))
+				return nil
 			}
 		}
 	}

@@ -3,28 +3,39 @@ package pack
 import (
 	"Goffer/kitex_gen/base"
 	"Goffer/pkg/errno"
+	"Goffer/pkg/logger"
+	"context"
 	"errors"
 
-	"github.com/cloudwego/kitex/pkg/klog"
+	"go.uber.org/zap"
 )
 
-// BuildBaseResp build baseResp from error
+// BuildBaseResp 将 error 转换为 *base.Response。
 func BuildBaseResp(err error) *base.Response {
 	if err == nil {
-		return baseResp(errno.Success)
+		return resp(errno.Success)
 	}
-
-	e := errno.ErrNo{}
-	// 如果是业务定义的 ErrNo（包括被 fmt.Errorf %w 包装过的），正常返回给前端
+	var e errno.ErrNo
 	if errors.As(err, &e) {
-		return baseResp(e)
+		return resp(e)
 	}
-	// 非业务错误，记录日志，并对前端隐藏细节
-	klog.Errorf("Internal Server Error: %v", err)
-
-	return baseResp(errno.ServiceErr)
+	logger.Error("RPC Internal Server Error", zap.Error(err))
+	return resp(errno.ServiceErr)
 }
 
-func baseResp(err errno.ErrNo) *base.Response {
-	return &base.Response{Code: err.ErrCode, Message: err.ErrMsg}
+// BuildBaseRespCtx 同 BuildBaseResp，但日志携带 ctx 中的 OTel TraceID。
+func BuildBaseRespCtx(ctx context.Context, err error) *base.Response {
+	if err == nil {
+		return resp(errno.Success)
+	}
+	var e errno.ErrNo
+	if errors.As(err, &e) {
+		return resp(e)
+	}
+	logger.ErrorCtx(ctx, "RPC Internal Server Error", zap.Error(err))
+	return resp(errno.ServiceErr)
+}
+
+func resp(e errno.ErrNo) *base.Response {
+	return &base.Response{Code: e.ErrCode, Message: e.ErrMsg}
 }

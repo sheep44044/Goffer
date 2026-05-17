@@ -6,7 +6,10 @@ import (
 	"Goffer/app/rpc/user/svc"
 	"Goffer/kitex_gen/user"
 	"Goffer/pkg/errno"
+	"Goffer/pkg/logger"
 	"context"
+
+	"go.uber.org/zap"
 )
 
 type UserServiceImpl struct {
@@ -21,9 +24,11 @@ func (s *UserServiceImpl) Register(ctx context.Context, req *user.RegisterReq) (
 		return resp, nil
 	}
 
-	err = service.NewRegisterService(s.svc).Register(ctx, req)
-	if err != nil {
-		resp.Resp = pack.BuildBaseResp(err)
+	logger.InfoCtx(ctx, "RPC 注册请求", zap.String("username", req.Username))
+
+	if err = service.NewRegisterService(s.svc).Register(ctx, req); err != nil {
+		logger.ErrorCtx(ctx, "注册失败", zap.String("username", req.Username), zap.Error(err))
+		resp.Resp = pack.BuildBaseRespCtx(ctx, err)
 		return resp, nil
 	}
 
@@ -39,9 +44,12 @@ func (s *UserServiceImpl) Login(ctx context.Context, req *user.LoginReq) (resp *
 		return resp, nil
 	}
 
+	logger.InfoCtx(ctx, "RPC 登录请求", zap.String("username", req.Username))
+
 	token, err := service.NewLoginService(s.svc).Login(ctx, req)
 	if err != nil {
-		resp.Resp = pack.BuildBaseResp(err)
+		logger.ErrorCtx(ctx, "登录失败", zap.String("username", req.Username), zap.Error(err))
+		resp.Resp = pack.BuildBaseRespCtx(ctx, err)
 		return resp, nil
 	}
 
@@ -58,16 +66,23 @@ func (s *UserServiceImpl) UploadResume(ctx context.Context, req *user.UploadResu
 		return resp, nil
 	}
 
+	logger.InfoCtx(ctx, "RPC 上传简历请求",
+		zap.String("user_id", req.UserId),
+		zap.String("file_name", req.FileName))
+
 	resumeID, fileURL, err := service.NewUploadResumeService(s.svc).UploadResume(ctx, req)
 	if err != nil {
-		resp.Resp = pack.BuildBaseResp(err)
+		logger.ErrorCtx(ctx, "上传简历RPC失败",
+			zap.String("user_id", req.UserId),
+			zap.String("file_name", req.FileName),
+			zap.Error(err))
+		resp.Resp = pack.BuildBaseRespCtx(ctx, err)
 		return resp, nil
 	}
 
 	resp.Resp = pack.BuildBaseResp(errno.Success)
 	resp.ResumeId = resumeID
 	resp.FileUrl = fileURL
-
 	return resp, nil
 }
 
@@ -81,7 +96,11 @@ func (s *UserServiceImpl) CheckResumeStatus(ctx context.Context, req *user.Check
 
 	status, err := service.NewCheckStatusService(s.svc).CheckResumeStatus(ctx, req)
 	if err != nil {
-		resp.Resp = pack.BuildBaseResp(err)
+		logger.ErrorCtx(ctx, "查询简历状态失败",
+			zap.String("user_id", req.UserId),
+			zap.String("resume_id", req.ResumeId),
+			zap.Error(err))
+		resp.Resp = pack.BuildBaseRespCtx(ctx, err)
 		return resp, nil
 	}
 
@@ -98,9 +117,12 @@ func (s *UserServiceImpl) UpdateResumeStatus(ctx context.Context, req *user.Upda
 		return resp, nil
 	}
 
-	err = service.NewUpdateStatusService(s.svc).UpdateResumeStatus(ctx, req)
-	if err != nil {
-		resp.Resp = pack.BuildBaseResp(err)
+	if err = service.NewUpdateStatusService(s.svc).UpdateResumeStatus(ctx, req); err != nil {
+		logger.ErrorCtx(ctx, "更新简历状态失败",
+			zap.String("resume_id", req.ResumeId),
+			zap.Int64("status", int64(req.Status)),
+			zap.Error(err))
+		resp.Resp = pack.BuildBaseRespCtx(ctx, err)
 		return resp, nil
 	}
 

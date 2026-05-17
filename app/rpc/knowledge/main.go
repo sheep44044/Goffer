@@ -13,6 +13,7 @@ import (
 	"github.com/cloudwego/kitex/pkg/limit"
 	"github.com/cloudwego/kitex/pkg/rpcinfo"
 	"github.com/cloudwego/kitex/server"
+	"github.com/kitex-contrib/obs-opentelemetry/tracing"
 	etcd "github.com/kitex-contrib/registry-etcd"
 )
 
@@ -52,6 +53,7 @@ func main() {
 		server.WithMuxTransport(),                                          // Multiplex
 		//server.WithSuite(trace.NewDefaultServerSuite()),                    // tracer
 		//server.WithBoundHandler(bound.NewCpuLimitHandler()), // BoundHandler
+		server.WithSuite(tracing.NewServerSuite()),
 		server.WithRegistry(r), // registry
 	)
 	fmt.Printf("User RPC Server 正在启动，监听地址: %s, 注册到 Etcd: %s\n", listenAddr, cfg.Etcd.Address)

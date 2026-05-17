@@ -5,12 +5,14 @@ import (
 	"Goffer/kitex_gen/agent" // 引入你刚生成的 agent thrift 代码
 	"Goffer/kitex_gen/interview"
 	"Goffer/pkg/contextutil"
+	"Goffer/pkg/logger"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 type ChatService struct {
@@ -22,9 +24,8 @@ func NewChatService(svc *svc.ServiceContext) *ChatService {
 }
 
 func (s *ChatService) ChatStream(ctx context.Context, req *interview.ChatReq, stream interview.InterviewService_ChatStreamServer) error {
-	err := s.advanceFSM(ctx, req.SessionId)
-	if err != nil {
-		log.Printf("⚠️ 推进状态机失败，但不阻断聊天: %v", err)
+	if err := s.advanceFSM(ctx, req.SessionId); err != nil {
+		logger.WarnCtx(ctx, "推进状态机失败，但不阻断聊天", zap.Error(err))
 	}
 	// 1. 获取业务情报 (查 DB/Redis)
 	// ⚠️ 注意：这里的 contextInfo 里现在应该包含 ResumeId 了（见下方的修改）
@@ -80,16 +81,18 @@ func (s *ChatService) ChatStream(ctx context.Context, req *interview.ChatReq, st
 				Chunk: agentResp.Chunk,
 			})
 			if err != nil {
-				log.Printf("网关断开连接，停止发送: %v", err)
+				logger.InfoCtx(ctx, "网关断开连接，停止发送", zap.Error(err))
 				break
 			}
 		}
 	}
 
-	// 5. 异步落地“战后记忆”
+	// 5. 异步保存聊天记录,保留 TraceID,仅解除 Cancel 绑定
 	go func(sid, userMsg, aiMsg string) {
-		bgCtx := context.Background()
-		_ = s.svc.Repo.SaveChatRecordInterview(bgCtx, sid, userMsg, aiMsg, "")
+		bgCtx := context.WithoutCancel(ctx)
+		if err := s.svc.Repo.SaveChatRecordInterview(bgCtx, sid, userMsg, aiMsg, ""); err != nil {
+			logger.WarnCtx(bgCtx, "异步保存聊天记录失败", zap.Error(err))
+		}
 	}(req.SessionId, req.Message, fullAnswer)
 
 	return nil

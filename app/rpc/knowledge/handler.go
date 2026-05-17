@@ -6,7 +6,10 @@ import (
 	"Goffer/app/rpc/user/pack"
 	"Goffer/kitex_gen/knowledge"
 	"Goffer/pkg/errno"
+	"Goffer/pkg/logger"
 	"context"
+
+	"go.uber.org/zap"
 )
 
 type knowledgeServiceImpl struct {
@@ -20,9 +23,12 @@ func (s *knowledgeServiceImpl) IngestQuestion(ctx context.Context, req *knowledg
 		return resp, nil
 	}
 
+	logger.InfoCtx(ctx, "RPC 录入题目请求", zap.Int("content_len", len(req.QuestionContent)))
+
 	questionID, err := service.NewQuestionService(s.svc).IngestQuestion(ctx, req)
 	if err != nil {
-		resp.Resp = pack.BuildBaseResp(err)
+		logger.ErrorCtx(ctx, "录入题目失败", zap.Error(err))
+		resp.Resp = pack.BuildBaseRespCtx(ctx, err)
 		return resp, nil
 	}
 	resp.Resp = pack.BuildBaseResp(errno.Success)
@@ -37,9 +43,14 @@ func (s *knowledgeServiceImpl) UploadQuestion(ctx context.Context, req *knowledg
 		return resp, nil
 	}
 
+	logger.InfoCtx(ctx, "RPC 上传题库文件请求",
+		zap.String("user_id", req.UserId),
+		zap.String("file_name", req.FileName))
+
 	csvID, fileURL, err := service.NewQuestionCSVService(s.svc).UploadQuestionCSV(ctx, req)
 	if err != nil {
-		resp.Resp = pack.BuildBaseResp(err)
+		logger.ErrorCtx(ctx, "上传题库文件失败", zap.Error(err))
+		resp.Resp = pack.BuildBaseRespCtx(ctx, err)
 		return resp, nil
 	}
 
@@ -56,9 +67,14 @@ func (s *knowledgeServiceImpl) IngestJD(ctx context.Context, req *knowledge.Inge
 		return resp, nil
 	}
 
+	logger.InfoCtx(ctx, "RPC 录入 JD 请求",
+		zap.String("company", req.Company),
+		zap.String("title", req.Title))
+
 	JDid, err := service.NewJDService(s.svc).IngestQuestion(ctx, req)
 	if err != nil {
-		resp.Resp = pack.BuildBaseResp(err)
+		logger.ErrorCtx(ctx, "录入 JD 失败", zap.Error(err))
+		resp.Resp = pack.BuildBaseRespCtx(ctx, err)
 		return resp, nil
 	}
 
@@ -74,9 +90,14 @@ func (s *knowledgeServiceImpl) UploadJD(ctx context.Context, req *knowledge.Uplo
 		return resp, nil
 	}
 
+	logger.InfoCtx(ctx, "RPC 上传 JD 文件请求",
+		zap.String("user_id", req.UserId),
+		zap.String("file_name", req.FileName))
+
 	csvID, fileURL, err := service.NewJDCSVService(s.svc).UploadJDCSV(ctx, req)
 	if err != nil {
-		resp.Resp = pack.BuildBaseResp(err)
+		logger.ErrorCtx(ctx, "上传 JD 文件失败", zap.Error(err))
+		resp.Resp = pack.BuildBaseRespCtx(ctx, err)
 		return resp, nil
 	}
 

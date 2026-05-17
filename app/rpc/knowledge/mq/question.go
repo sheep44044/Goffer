@@ -16,19 +16,16 @@ type QuestionParseTask struct {
 	Difficulty      string   `json:"difficulty"`
 }
 
-func (p *KafkaProducer) SendQuestionParseTask(task QuestionParseTask) error {
+func (p *KafkaProducer) SendQuestionParseTask(ctx context.Context, task QuestionParseTask) error {
 	msgBytes, _ := json.Marshal(task)
 
 	msg := kafka.Message{
 		Value: msgBytes,
 	}
 
-	err := p.writer.WriteMessages(context.Background(), msg)
-	if err != nil {
+	if err := p.writer.WriteMessages(ctx, msg); err != nil {
 		return fmt.Errorf("failed to send msg to kafka: %w", err)
 	}
 
-	// 注意：kafka-go 的 WriteMessages 不会直接返回具体的 partition 和 offset
-	fmt.Println("Task sent successfully to kafka topic: resume_parse_topic")
 	return nil
 }

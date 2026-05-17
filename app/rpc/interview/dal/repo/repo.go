@@ -2,10 +2,13 @@ package repo
 
 import (
 	"Goffer/app/rpc/interview/dal/mongodb"
+	"Goffer/pkg/logger"
 	"context"
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // ChatMessage 代表单条聊天消息
@@ -113,8 +116,7 @@ func (s *RepoService) SaveChatRecordInterview(ctx context.Context, sessionID, Us
 				fsmBytes, _ := json.Marshal(fsmState)
 				err = s.Cache.Set(ctx, fsmKey, fsmBytes, 2*time.Hour).Err()
 				if err != nil {
-					// 记录日志，但不阻断流程，因为聊天记录已经保存成功
-					fmt.Printf("Warning: Failed to update FSM state in Redis: %v\n", err)
+					logger.WarnCtx(ctx, "更新 Redis FSM 状态失败(不影响聊天记录)", zap.Error(err))
 				}
 			}
 		}

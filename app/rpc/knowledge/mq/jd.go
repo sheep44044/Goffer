@@ -17,19 +17,16 @@ type JDParseTask struct {
 	Tags             []string `json:"tags"`
 }
 
-func (p *KafkaProducer) SendJDParseTask(task JDParseTask) error {
+func (p *KafkaProducer) SendJDParseTask(ctx context.Context, task JDParseTask) error {
 	msgBytes, _ := json.Marshal(task)
 
 	msg := kafka.Message{
 		Value: msgBytes,
 	}
 
-	err := p.writer.WriteMessages(context.Background(), msg)
-	if err != nil {
+	if err := p.writer.WriteMessages(ctx, msg); err != nil {
 		return fmt.Errorf("failed to send msg to kafka: %w", err)
 	}
 
-	// 注意：kafka-go 的 WriteMessages 不会直接返回具体的 partition 和 offset
-	fmt.Println("Task sent successfully to kafka topic: resume_parse_topic")
 	return nil
 }

@@ -5,7 +5,7 @@ import (
 
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
-	gormopentracing "gorm.io/plugin/opentracing"
+	"gorm.io/plugin/opentelemetry/tracing"
 )
 
 func Init(cfg *config.Config) (*gorm.DB, error) {
@@ -21,7 +21,7 @@ func Init(cfg *config.Config) (*gorm.DB, error) {
 		return nil, err
 	}
 
-	if err = db.Use(gormopentracing.New()); err != nil {
+	if err = db.Use(tracing.NewPlugin()); err != nil {
 		return nil, err
 	}
 

@@ -14,7 +14,6 @@ const (
 	UserNotExistErrCode        = 10005
 	PasswordMismatchErrCode    = 10006
 
-	// 新增业务线错误码：文件与解析相关
 	FileUploadErrCode     = 20001
 	FileFormatErrCode     = 20002
 	ResumeParseErrCode    = 20003
@@ -54,13 +53,20 @@ var (
 	ResumeNotFoundErr = NewErrNo(ResumeNotFoundErrCode, "Resume does not exist")
 )
 
+// ConvertErr 将任意 error 转换为 ErrNo。
+// 若 err 本身是 ErrNo 或被 %w 包装过，保留业务错误码与消息；
+// 否则返回 ServiceErr，且不暴露底层技术错误细节给前端。
 func ConvertErr(err error) ErrNo {
-	Err := ErrNo{}
-	if errors.As(err, &Err) {
-		return Err
+	var e ErrNo
+	if errors.As(err, &e) {
+		return e
 	}
+	return ServiceErr
+}
 
-	s := ServiceErr
-	s.ErrMsg = err.Error()
-	return s
+// IsBizErr 判断 err 或其包装链中是否包含业务定义的 ErrNo。
+// 用于在日志层面区分业务预期错误和需要告警的系统异常。
+func IsBizErr(err error) bool {
+	var e ErrNo
+	return errors.As(err, &e)
 }
