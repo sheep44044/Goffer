@@ -2,15 +2,15 @@
 
 <div align="center">
 
-[![Go Version](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Kitex](https://img.shields.io/badge/RPC-Kitex-6A5ACD)](https://github.com/cloudwego/kitex)
-[![Hertz](https://img.shields.io/badge/Gateway-Hertz-00BFFF)](https://github.com/cloudwego/hertz)
-[![Eino](https://img.shields.io/badge/Agent-Eino-FF6B35)](https://github.com/cloudwego/eino)
-
 *一个基于 WebRTC + Eino Agent 的全双工、可打断、RAG 增强的拟真 AI 面试平台*
 
 </div>
+
+---
+
+## 接口文档
+
+完整 API 文档（含请求/响应示例、鉴权方式、WebRTC 信令协议）→ [docs/API.md](docs/API.md)
 
 ---
 
@@ -145,19 +145,19 @@ Goffer/
 ### 全双工语音数据流
 
 ```mermaid
-graph LR
-    A[Browser 麦克风] -->|OPUS/RTP| B[Media Gateway<br/>Pion WebRTC]
-    B -->|audio.in<br/>Kafka| C[EarMouth Inbound<br/>STT Pipeline]
-    C -->|text.in<br/>Kafka| D[Interview Service<br/>ChatStream]
-    D -->|Kitex Stream| E[Agent Service<br/>Eino DAG]
-    E -->|Qdrant| F[(向量数据库<br/>RAG 检索)]
-    E -->|text.out<br/>Kafka| G[EarMouth Outbound<br/>TTS Pipeline]
-    G -->|audio.out<br/>Kafka| H[Media Downlink]
-    H -->|OPUS/RTP| I[Browser 扬声器]
-
-    B -.->|DataChannel cancel| J[Redis Pub/Sub]
-    J -.->|ctx.Cancel| E
-    J -.->|CancelTracker| G
+Browser              Media               EarMouth               Agent              Qdrant
+  │                    │                    │                     │                   │
+  │── 麦克风 OPUS ─────►│                    │                     │                   │
+  │                    │── audio.in(MQ) ───►│                     │                   │
+  │                    │                    ├── STT 语音转文字      │                   │
+  │                    │                    │── text.in(MQ) ─────►│                   │
+  │                    │                    │                     │─── RAG 向量检索 ──►│
+  │                    │                    │                     │◄─ 返回相关上下文 ───│
+  │                    │                    │◄── text.out(MQ) ────│ (流式生成文本)      │
+  │                    │                    ├── TTS 文字转语音  ────│                   │
+  │                    │◄── audio.out(MQ) ──│                     │                   │
+  │◄─ 扬声器 OPUS ──────│                    │                     │                   │
+  │                    │                    │                     │                   │
 ```
 
 ### 打断时序
@@ -165,15 +165,15 @@ graph LR
 ```
 Browser              Media                Redis             Agent             EarMouth
   │                    │                    │                  │                  │
-  │──VAD检测到人声────►│                    │                  │                  │
+  │── VAD检测到人声 ────►│                    │                  │                  │
   │                    │──DataChannel msg──►│                  │                  │
   │                    │──Publish cancel───►│                  │                  │
   │                    │                    │──subscribe──────►│                  │
   │                    │                    │                  │──ctx.Cancel()    │
-  │                    │                    │                  │  LLM 立即停止    │
-  │                    │                    │──subscribe──────────────────────►│
-  │                    │                    │                  │  CancelTracker  │
-  │                    │                    │                  │  丢弃积压+中断TTS│
+  │                    │                    │                  │  LLM 立即停止     │
+  │                    │                    │──subscribe─────────────────────────►│
+  │                    │                    │                  │  CancelTracker   │
+  │                    │                    │                  │  丢弃积压+中断TTS  │
 ```
 
 ---
