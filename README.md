@@ -1,10 +1,6 @@
 # Goffer
 
-<div align="center">
-
 *一个基于 WebRTC + Eino Agent 的全双工、可打断、RAG 增强的拟真 AI 面试平台*
-
-</div>
 
 ---
 
@@ -144,7 +140,7 @@ Goffer/
 
 ### 全双工语音数据流
 
-```mermaid
+```
 Browser              Media               EarMouth               Agent              Qdrant
   │                    │                    │                     │                   │
   │── 麦克风 OPUS ─────►│                    │                     │                   │
