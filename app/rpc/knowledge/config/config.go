@@ -44,8 +44,9 @@ type DBConfig struct {
 }
 
 type KafkaConfig struct {
-	Brokers []string `mapstructure:"brokers"`
-	Topic   string   `mapstructure:"topic"`
+	Brokers       []string `mapstructure:"brokers"`
+	JDTopic       string   `mapstructure:"jd_topic"`
+	QuestionTopic string   `mapstructure:"question_topic"`
 }
 
 type VolcEngineConfig struct {

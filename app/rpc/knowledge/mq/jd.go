@@ -20,12 +20,8 @@ type JDParseTask struct {
 func (p *KafkaProducer) SendJDParseTask(ctx context.Context, task JDParseTask) error {
 	msgBytes, _ := json.Marshal(task)
 
-	msg := kafka.Message{
-		Value: msgBytes,
-	}
-
-	if err := p.writer.WriteMessages(ctx, msg); err != nil {
-		return fmt.Errorf("failed to send msg to kafka: %w", err)
+	if err := p.jdWriter.WriteMessages(ctx, kafka.Message{Value: msgBytes}); err != nil {
+		return fmt.Errorf("failed to send JD msg to kafka: %w", err)
 	}
 
 	return nil

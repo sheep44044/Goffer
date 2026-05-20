@@ -1,24 +1,24 @@
-version: '3.8'
-
 services:
+  # ==========================================
   # 1. 服务治理与缓存
-  # Etcd (微服务注册中心)
+  # ==========================================
   etcd:
-    image: bitnami/etcd:latest
+    image: quay.io/coreos/etcd:v3.5.9
     container_name: goffer-etcd
-    environment:
-      - ALLOW_NONE_AUTHENTICATION=yes
-      - ETCD_ADVERTISE_CLIENT_URLS=http://0.0.0.0:2379
+    entrypoint: /usr/local/bin/etcd
+    command:
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://0.0.0.0:2379
     ports:
       - "2379:2379"
       - "2380:2380"
     networks:
       - goffer_net
 
-  # Redis (高并发面试状态机 FSM / 缓存 / Token黑名单)
   redis:
     image: redis:alpine
     container_name: goffer-redis
+    command: redis-server --requirepass 123456
     ports:
       - "6379:6379"
     volumes:
@@ -26,14 +26,15 @@ services:
     networks:
       - goffer_net
 
-  # 2. 核心数据库集群 (混合存储)
-  # MySQL (存储强结构化业务数据: User, JD, 题库元数据)
+  # ==========================================
+  # 2. 核心数据库集群
+  # ==========================================
   mysql:
     image: mysql:8.0
     container_name: goffer-mysql
     environment:
-      - MYSQL_ROOT_PASSWORD=root123 # 请与你 config.yaml 中保持一致
-      - MYSQL_DATABASE=goffer
+      MYSQL_ROOT_PASSWORD: "123456"
+      MYSQL_DATABASE: goffer
     ports:
       - "3306:3306"
     volumes:
@@ -41,9 +42,8 @@ services:
     networks:
       - goffer_net
 
-  # MongoDB (存储非结构化数据: AI面试对话日志流)
   mongodb:
-    image: mongo:latest
+    image: mongo:7
     container_name: goffer-mongo
     ports:
       - "27017:27017"
@@ -52,111 +52,103 @@ services:
     networks:
       - goffer_net
 
-  # MinIO (对象存储: PDF简历、用户头像)
   minio:
     image: minio/minio:latest
     container_name: goffer-minio
     environment:
-      - MINIO_ROOT_USER=admin     # MinIO 账号
-      - MINIO_ROOT_PASSWORD=admin123 # MinIO 密码
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password123
     command: server /data --console-address ":9001"
     ports:
-      - "9000:9000" # API 端口 (Go 代码连这个)
-      - "9001:9001" # Web 控制台端口 (浏览器连这个)
+      - "9000:9000"
+      - "9001:9001"
     volumes:
       - minio_data:/data
     networks:
       - goffer_net
 
-  # Qdrant (向量数据库: RAG 简历切片检索)
   qdrant:
     image: qdrant/qdrant:latest
     container_name: goffer-qdrant
     ports:
-      - "6333:6333" # HTTP API
-      - "6334:6334" # gRPC API
+      - "6333:6333"
+      - "6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
     networks:
       - goffer_net
 
-  # 3. 异步消息队列 (流式语音/文本解耦)
-  # Kafka (基于 KRaft 模式，抛弃臃肿的 Zookeeper)
+  # ==========================================
+  # 3. 异步消息队列
+  # ==========================================
   kafka:
-    image: bitnami/kafka:latest
+    image: apache/kafka:4.0.2
     container_name: goffer-kafka
     environment:
-      - KAFKA_ENABLE_KRAFT=yes
-      - KAFKA_CFG_PROCESS_ROLES=broker,controller
-      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
-      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
-      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
-      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://127.0.0.1:9092 # 方便宿主机 Go 代码直接连 9092
-      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
-      - KAFKA_BROKER_ID=1
-      - KAFKA_CFG_NODE_ID=1
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://127.0.0.1:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     ports:
       - "9092:9092"
-    volumes:
-      - kafka_data:/bitnami/kafka
     networks:
       - goffer_net
 
-  # 4. 可观测性基建 (OpenTelemetry + Prometheus + Jaeger)
-  # Jaeger (分布式链路追踪前端与存储)
+  # ==========================================
+  # 4. 可观测性
+  # ==========================================
   jaeger:
     image: jaegertracing/all-in-one:latest
     container_name: goffer-jaeger
     environment:
-      - COLLECTOR_OTLP_ENABLED=true
+      COLLECTOR_OTLP_ENABLED: "true"
     ports:
-      - "16686:16686" # Web UI 面板
+      - "16686:16686"
     networks:
       - goffer_net
 
-  # Prometheus (指标时序数据库)
   prometheus:
     image: prom/prometheus:latest
     container_name: goffer-prometheus
     volumes:
-      - ./docker-compose/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
     ports:
       - "9090:9090"
     networks:
       - goffer_net
 
-  # Grafana (大盘监控中心)
   grafana:
     image: grafana/grafana:latest
     container_name: goffer-grafana
     ports:
-      - "3000:3000" # Web UI 面板
+      - "3000:3000"
     networks:
       - goffer_net
 
-  # OTel Collector (遥测数据接收枢纽)
   otel-collector:
-    image: otel/opentelemetry-collector:latest
+    image: otel/opentelemetry-collector-contrib:latest
     container_name: goffer-otel
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
-      - ./docker-compose/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
     ports:
-      - "4317:4317" # OTLP gRPC 接收端口 (你的 Go 代码只需发数据到这里)
-      - "8889:8889" # 暴露给 Prometheus 拉取指标的端口
+      - "4317:4317"
+      - "8889:8889"
     depends_on:
       - jaeger
     networks:
       - goffer_net
 
-# 数据卷与网络定义
 volumes:
   redis_data:
   mysql_data:
   mongo_data:
   minio_data:
   qdrant_data:
-  kafka_data:
 
 networks:
   goffer_net:
