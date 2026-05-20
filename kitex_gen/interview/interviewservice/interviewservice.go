@@ -36,6 +36,13 @@ var serviceMethods = map[string]kitex.MethodInfo{
 		false,
 		kitex.WithStreamingMode(kitex.StreamingNone),
 	),
+	"ResumeSession": kitex.NewMethodInfo(
+		resumeSessionHandler,
+		newInterviewServiceResumeSessionArgs,
+		newInterviewServiceResumeSessionResult,
+		false,
+		kitex.WithStreamingMode(kitex.StreamingNone),
+	),
 }
 
 var (
@@ -183,6 +190,24 @@ func newInterviewServiceGetChatContextResult() interface{} {
 	return interview.NewInterviewServiceGetChatContextResult()
 }
 
+func resumeSessionHandler(ctx context.Context, handler interface{}, arg, result interface{}) error {
+	realArg := arg.(*interview.InterviewServiceResumeSessionArgs)
+	realResult := result.(*interview.InterviewServiceResumeSessionResult)
+	success, err := handler.(interview.InterviewService).ResumeSession(ctx, realArg.Req)
+	if err != nil {
+		return err
+	}
+	realResult.Success = success
+	return nil
+}
+func newInterviewServiceResumeSessionArgs() interface{} {
+	return interview.NewInterviewServiceResumeSessionArgs()
+}
+
+func newInterviewServiceResumeSessionResult() interface{} {
+	return interview.NewInterviewServiceResumeSessionResult()
+}
+
 type kClient struct {
 	c client.Client
 }
@@ -229,6 +254,16 @@ func (p *kClient) GetChatContext(ctx context.Context, req *interview.GetChatCont
 	_args.Req = req
 	var _result interview.InterviewServiceGetChatContextResult
 	if err = p.c.Call(ctx, "GetChatContext", &_args, &_result); err != nil {
+		return
+	}
+	return _result.GetSuccess(), nil
+}
+
+func (p *kClient) ResumeSession(ctx context.Context, req *interview.ResumeSessionReq) (r *interview.ResumeSessionResp, err error) {
+	var _args interview.InterviewServiceResumeSessionArgs
+	_args.Req = req
+	var _result interview.InterviewServiceResumeSessionResult
+	if err = p.c.Call(ctx, "ResumeSession", &_args, &_result); err != nil {
 		return
 	}
 	return _result.GetSuccess(), nil

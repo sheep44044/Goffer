@@ -1,6 +1,7 @@
 package service
 
 import (
+	"Goffer/app/rpc/interview/dal/repo"
 	"Goffer/app/rpc/interview/svc"
 	"Goffer/kitex_gen/interview"
 	"Goffer/kitex_gen/user"
@@ -41,12 +42,15 @@ func (s *StartService) StartInterview(ctx context.Context, req *interview.StartI
 	sessionID := snowflake.GenString()
 
 	fsmKey := fmt.Sprintf("interview:fsm:%s", sessionID)
-	fsmState := map[string]interface{}{
-		"status":    "greeting", // 初始状态为打招呼
-		"round":     0,          // 对话轮次初始化为 0
-		"resume_id": req.ResumeId,
+	fsmState := repo.FSMState{
+		Status:   "greeting", // 初始状态为打招呼
+		Round:    0,          // 对话轮次初始化为 0
+		ResumeID: req.ResumeId,
 	}
-	fsmBytes, _ := json.Marshal(fsmState)
+	fsmBytes, err := json.Marshal(fsmState)
+	if err != nil {
+		return nil, fmt.Errorf("序列化 FSM 初始状态失败: %w", err)
+	}
 
 	// 将状态写入 Redis，并设置一个过期时间 (比如 2 小时后自动销毁房间)
 	err = s.svc.Cache.Set(ctx, fsmKey, fsmBytes, 2*time.Hour).Err()

@@ -40,6 +40,17 @@ struct GetChatContextResp {
     4: string rag_chunks    // 检索出的最高相关度简历切片（从 Qdrant 中拉取）
 }
 
+struct ResumeSessionReq {
+    1: string session_id
+}
+
+struct ResumeSessionResp {
+    1: base.Response resp
+    2: string fsm_state
+    3: i32 round
+    4: list<ChatMessage> history
+}
+
 service InterviewService {
     // 初始化面试房间与 FSM
     StartInterviewResp StartInterview(1: StartInterviewReq req)
@@ -48,4 +59,6 @@ service InterviewService {
     ChatResp ChatStream(1: ChatReq req) (streaming.mode="server")
 
     GetChatContextResp GetChatContext(1: GetChatContextReq req)
+
+    ResumeSessionResp ResumeSession(1: ResumeSessionReq req)
 }

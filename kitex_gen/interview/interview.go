@@ -320,12 +320,108 @@ var fieldIDToName_GetChatContextResp = map[int16]string{
 	4: "rag_chunks",
 }
 
+type ResumeSessionReq struct {
+	SessionId string `thrift:"session_id,1" frugal:"1,default,string" json:"session_id"`
+}
+
+func NewResumeSessionReq() *ResumeSessionReq {
+	return &ResumeSessionReq{}
+}
+
+func (p *ResumeSessionReq) InitDefault() {
+}
+
+func (p *ResumeSessionReq) GetSessionId() (v string) {
+	return p.SessionId
+}
+func (p *ResumeSessionReq) SetSessionId(val string) {
+	p.SessionId = val
+}
+
+func (p *ResumeSessionReq) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ResumeSessionReq(%+v)", *p)
+}
+
+var fieldIDToName_ResumeSessionReq = map[int16]string{
+	1: "session_id",
+}
+
+type ResumeSessionResp struct {
+	Resp     *base.Response `thrift:"resp,1" frugal:"1,default,base.Response" json:"resp"`
+	FsmState string         `thrift:"fsm_state,2" frugal:"2,default,string" json:"fsm_state"`
+	Round    int32          `thrift:"round,3" frugal:"3,default,i32" json:"round"`
+	History  []*ChatMessage `thrift:"history,4" frugal:"4,default,list<ChatMessage>" json:"history"`
+}
+
+func NewResumeSessionResp() *ResumeSessionResp {
+	return &ResumeSessionResp{}
+}
+
+func (p *ResumeSessionResp) InitDefault() {
+}
+
+var ResumeSessionResp_Resp_DEFAULT *base.Response
+
+func (p *ResumeSessionResp) GetResp() (v *base.Response) {
+	if !p.IsSetResp() {
+		return ResumeSessionResp_Resp_DEFAULT
+	}
+	return p.Resp
+}
+
+func (p *ResumeSessionResp) GetFsmState() (v string) {
+	return p.FsmState
+}
+
+func (p *ResumeSessionResp) GetRound() (v int32) {
+	return p.Round
+}
+
+func (p *ResumeSessionResp) GetHistory() (v []*ChatMessage) {
+	return p.History
+}
+func (p *ResumeSessionResp) SetResp(val *base.Response) {
+	p.Resp = val
+}
+func (p *ResumeSessionResp) SetFsmState(val string) {
+	p.FsmState = val
+}
+func (p *ResumeSessionResp) SetRound(val int32) {
+	p.Round = val
+}
+func (p *ResumeSessionResp) SetHistory(val []*ChatMessage) {
+	p.History = val
+}
+
+func (p *ResumeSessionResp) IsSetResp() bool {
+	return p.Resp != nil
+}
+
+func (p *ResumeSessionResp) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ResumeSessionResp(%+v)", *p)
+}
+
+var fieldIDToName_ResumeSessionResp = map[int16]string{
+	1: "resp",
+	2: "fsm_state",
+	3: "round",
+	4: "history",
+}
+
 type InterviewService interface {
 	StartInterview(ctx context.Context, req *StartInterviewReq) (r *StartInterviewResp, err error)
 
 	ChatStream(req *ChatReq, stream InterviewService_ChatStreamServer) (err error)
 
 	GetChatContext(ctx context.Context, req *GetChatContextReq) (r *GetChatContextResp, err error)
+
+	ResumeSession(ctx context.Context, req *ResumeSessionReq) (r *ResumeSessionResp, err error)
 }
 
 type InterviewServiceStartInterviewArgs struct {
@@ -559,5 +655,81 @@ func (p *InterviewServiceGetChatContextResult) String() string {
 }
 
 var fieldIDToName_InterviewServiceGetChatContextResult = map[int16]string{
+	0: "success",
+}
+
+type InterviewServiceResumeSessionArgs struct {
+	Req *ResumeSessionReq `thrift:"req,1" frugal:"1,default,ResumeSessionReq" json:"req"`
+}
+
+func NewInterviewServiceResumeSessionArgs() *InterviewServiceResumeSessionArgs {
+	return &InterviewServiceResumeSessionArgs{}
+}
+
+func (p *InterviewServiceResumeSessionArgs) InitDefault() {
+}
+
+var InterviewServiceResumeSessionArgs_Req_DEFAULT *ResumeSessionReq
+
+func (p *InterviewServiceResumeSessionArgs) GetReq() (v *ResumeSessionReq) {
+	if !p.IsSetReq() {
+		return InterviewServiceResumeSessionArgs_Req_DEFAULT
+	}
+	return p.Req
+}
+func (p *InterviewServiceResumeSessionArgs) SetReq(val *ResumeSessionReq) {
+	p.Req = val
+}
+
+func (p *InterviewServiceResumeSessionArgs) IsSetReq() bool {
+	return p.Req != nil
+}
+
+func (p *InterviewServiceResumeSessionArgs) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("InterviewServiceResumeSessionArgs(%+v)", *p)
+}
+
+var fieldIDToName_InterviewServiceResumeSessionArgs = map[int16]string{
+	1: "req",
+}
+
+type InterviewServiceResumeSessionResult struct {
+	Success *ResumeSessionResp `thrift:"success,0,optional" frugal:"0,optional,ResumeSessionResp" json:"success,omitempty"`
+}
+
+func NewInterviewServiceResumeSessionResult() *InterviewServiceResumeSessionResult {
+	return &InterviewServiceResumeSessionResult{}
+}
+
+func (p *InterviewServiceResumeSessionResult) InitDefault() {
+}
+
+var InterviewServiceResumeSessionResult_Success_DEFAULT *ResumeSessionResp
+
+func (p *InterviewServiceResumeSessionResult) GetSuccess() (v *ResumeSessionResp) {
+	if !p.IsSetSuccess() {
+		return InterviewServiceResumeSessionResult_Success_DEFAULT
+	}
+	return p.Success
+}
+func (p *InterviewServiceResumeSessionResult) SetSuccess(x interface{}) {
+	p.Success = x.(*ResumeSessionResp)
+}
+
+func (p *InterviewServiceResumeSessionResult) IsSetSuccess() bool {
+	return p.Success != nil
+}
+
+func (p *InterviewServiceResumeSessionResult) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("InterviewServiceResumeSessionResult(%+v)", *p)
+}
+
+var fieldIDToName_InterviewServiceResumeSessionResult = map[int16]string{
 	0: "success",
 }

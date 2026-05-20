@@ -1,6 +1,7 @@
 package service
 
 import (
+	"Goffer/app/rpc/interview/dal/repo"
 	"Goffer/app/rpc/interview/svc"
 	"Goffer/kitex_gen/agent"
 	"Goffer/kitex_gen/interview"
@@ -29,7 +30,7 @@ func (s *GetChatService) GetChatContextInterview(ctx context.Context, req *inter
 	}
 
 	// 从 Redis 读出来的是 JSON 字符串，需要反序列化 (Unmarshal) 为 map 或 struct
-	var fsmState map[string]interface{}
+	var fsmState repo.FSMState
 	if err := json.Unmarshal([]byte(fsmStr), &fsmState); err != nil {
 		return nil, fmt.Errorf("解析 FSM 状态失败: %w", err)
 	}
@@ -74,15 +75,9 @@ func (s *GetChatService) GetChatContextInterview(ctx context.Context, req *inter
 		})
 	}
 
-	// 提取当前的状态和轮次，给提示词工程使用
-	currentStatus := ""
-	if status, ok := fsmState["status"].(string); ok {
-		currentStatus = status
-	}
-
 	return &interview.GetChatContextResp{
-		FsmState:  currentStatus, // 例如: "greeting", "project_deep_dive"
-		History:   respMessages,  // 组装好的最近 5 轮对话数组
-		RagChunks: resumeContext, // 从 Qdrant 捞出来的简历文本片段
+		FsmState:  fsmState.Status, // 例如: "greeting", "project_deep_dive"
+		History:   respMessages,    // 组装好的最近 5 轮对话数组
+		RagChunks: resumeContext,   // 从 Qdrant 捞出来的简历文本片段
 	}, nil
 }

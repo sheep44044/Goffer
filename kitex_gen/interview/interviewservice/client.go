@@ -17,6 +17,7 @@ import (
 type Client interface {
 	StartInterview(ctx context.Context, req *interview.StartInterviewReq, callOptions ...callopt.Option) (r *interview.StartInterviewResp, err error)
 	GetChatContext(ctx context.Context, req *interview.GetChatContextReq, callOptions ...callopt.Option) (r *interview.GetChatContextResp, err error)
+	ResumeSession(ctx context.Context, req *interview.ResumeSessionReq, callOptions ...callopt.Option) (r *interview.ResumeSessionResp, err error)
 }
 
 // StreamClient is designed to provide Interface for Streaming APIs.
@@ -66,6 +67,11 @@ func (p *kInterviewServiceClient) StartInterview(ctx context.Context, req *inter
 func (p *kInterviewServiceClient) GetChatContext(ctx context.Context, req *interview.GetChatContextReq, callOptions ...callopt.Option) (r *interview.GetChatContextResp, err error) {
 	ctx = client.NewCtxWithCallOptions(ctx, callOptions)
 	return p.kClient.GetChatContext(ctx, req)
+}
+
+func (p *kInterviewServiceClient) ResumeSession(ctx context.Context, req *interview.ResumeSessionReq, callOptions ...callopt.Option) (r *interview.ResumeSessionResp, err error) {
+	ctx = client.NewCtxWithCallOptions(ctx, callOptions)
+	return p.kClient.ResumeSession(ctx, req)
 }
 
 // NewStreamClient creates a stream client for the service's streaming APIs defined in IDL.

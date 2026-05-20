@@ -1,6 +1,7 @@
 package service
 
 import (
+	"Goffer/app/rpc/interview/dal/repo"
 	"Goffer/app/rpc/interview/svc"
 	"Goffer/kitex_gen/agent" // 引入你刚生成的 agent thrift 代码
 	"Goffer/kitex_gen/interview"
@@ -90,7 +91,7 @@ func (s *ChatService) ChatStream(ctx context.Context, req *interview.ChatReq, st
 	// 5. 异步保存聊天记录,保留 TraceID,仅解除 Cancel 绑定
 	go func(sid, userMsg, aiMsg string) {
 		bgCtx := context.WithoutCancel(ctx)
-		if err := s.svc.Repo.SaveChatRecordInterview(bgCtx, sid, userMsg, aiMsg, ""); err != nil {
+		if err := s.svc.Repo.SaveChatRecordInterview(bgCtx, sid, userMsg, aiMsg); err != nil {
 			logger.WarnCtx(bgCtx, "异步保存聊天记录失败", zap.Error(err))
 		}
 	}(req.SessionId, req.Message, fullAnswer)
@@ -107,14 +108,14 @@ func (s *ChatService) advanceFSM(ctx context.Context, sessionID string) error {
 		return fmt.Errorf("读取状态机失败: %w", err)
 	}
 
-	var fsmState map[string]interface{}
+	var fsmState repo.FSMState
 	if err := json.Unmarshal([]byte(fsmStr), &fsmState); err != nil {
 		return fmt.Errorf("解析状态机失败: %w", err)
 	}
 
 	// 2. 推进逻辑
-	currentStatus := fsmState["status"].(string)
-	round := int(fsmState["round"].(float64))
+	currentStatus := fsmState.Status
+	round := fsmState.Round
 
 	round++
 	nextStatus := currentStatus
@@ -140,8 +141,8 @@ func (s *ChatService) advanceFSM(ctx context.Context, sessionID string) error {
 	}
 
 	// 3. 构造新状态并写回 Redis
-	fsmState["status"] = nextStatus
-	fsmState["round"] = round
+	fsmState.Status = nextStatus
+	fsmState.Round = round
 	// resume_id 天然还在 fsmState 里，不需要额外处理！
 
 	fsmBytes, _ := json.Marshal(fsmState)

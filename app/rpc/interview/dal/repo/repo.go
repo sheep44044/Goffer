@@ -2,14 +2,17 @@ package repo
 
 import (
 	"Goffer/app/rpc/interview/dal/mongodb"
-	"Goffer/pkg/logger"
 	"context"
 	"encoding/json"
 	"fmt"
 	"time"
-
-	"go.uber.org/zap"
 )
+
+type FSMState struct {
+	Status   string `json:"status"`
+	Round    int    `json:"round"`
+	ResumeID string `json:"resume_id"`
+}
 
 // ChatMessage 代表单条聊天消息
 type ChatMessage struct {
@@ -33,7 +36,7 @@ func (s *RepoService) GetChatContextInterview(ctx context.Context, SessionId str
 	}
 
 	// 从 Redis 读出来的是 JSON 字符串，需要反序列化 (Unmarshal) 为 map 或 struct
-	var fsmState map[string]interface{}
+	var fsmState FSMState
 	if err := json.Unmarshal([]byte(fsmStr), &fsmState); err != nil {
 		return nil, fmt.Errorf("解析 FSM 状态失败: %w", err)
 	}
@@ -54,26 +57,14 @@ func (s *RepoService) GetChatContextInterview(ctx context.Context, SessionId str
 		})
 	}
 
-	// 提取当前的状态和轮次，给提示词工程使用
-	currentStatus := ""
-	if status, ok := fsmState["status"].(string); ok {
-		currentStatus = status
-	}
-
-	currentResumeID := ""
-	if rID, ok := fsmState["resume_id"].(string); ok {
-		currentResumeID = rID
-	}
-
 	return &ChatContext{
-		FsmState: currentStatus, // 例如: "greeting", "project_deep_dive"
-		History:  respMessages,  // 组装好的最近 5 轮对话数组
-		ResumeId: currentResumeID,
+		FsmState: fsmState.Status, // 例如: "greeting", "project_deep_dive"
+		History:  respMessages,    // 组装好的最近 5 轮对话数组
+		ResumeId: fsmState.ResumeID,
 	}, nil
 }
 
-func (s *RepoService) SaveChatRecordInterview(ctx context.Context, sessionID, UserMsg, AiMsg, NextState string) error {
-	// 1. 保存用户消息到 MongoDB
+func (s *RepoService) SaveChatRecordInterview(ctx context.Context, sessionID, UserMsg, AiMsg string) error {
 	userMsg := mongodb.Message{
 		Role:    "user",
 		Content: UserMsg,
@@ -83,7 +74,6 @@ func (s *RepoService) SaveChatRecordInterview(ctx context.Context, sessionID, Us
 		return fmt.Errorf("保存用户聊天记录失败: %w", err)
 	}
 
-	// 2. 保存 AI 消息到 MongoDB
 	aiMsg := mongodb.Message{
 		Role:    "assistant",
 		Content: AiMsg,
@@ -91,35 +81,6 @@ func (s *RepoService) SaveChatRecordInterview(ctx context.Context, sessionID, Us
 	}
 	if err := s.Mongo.AppendMessage(ctx, sessionID, aiMsg); err != nil {
 		return fmt.Errorf("保存面试官聊天记录失败: %w", err)
-	}
-
-	// 3. (可选) 更新 Redis 的状态机，决定是否进入下一环节
-	if NextState != "" {
-		fsmKey := fmt.Sprintf("interview:fsm:%s", sessionID)
-
-		// 3.1 最佳实践：先读取老状态，防止覆盖掉 "round" (轮次) 等其他无关数据
-		// 注意：如果使用 go-redis，Get 返回的 value 通常用 .Result() 获取字符串
-		fsmStr, err := s.Cache.Get(ctx, fsmKey).Result()
-		if err == nil && fsmStr != "" {
-			var fsmState map[string]interface{}
-			if err := json.Unmarshal([]byte(fsmStr), &fsmState); err == nil {
-				// 3.2 更新状态
-				fsmState["status"] = NextState
-
-				// 3.3 (可选) 每次保存一轮完整对话，将对话轮次 + 1
-				// 注意：Go 中 json.Unmarshal 默认将数字解析为 float64
-				if round, ok := fsmState["round"].(float64); ok {
-					fsmState["round"] = round + 1
-				}
-
-				// 3.4 重新写回 Redis，并刷新过期时间（例如 2 小时）
-				fsmBytes, _ := json.Marshal(fsmState)
-				err = s.Cache.Set(ctx, fsmKey, fsmBytes, 2*time.Hour).Err()
-				if err != nil {
-					logger.WarnCtx(ctx, "更新 Redis FSM 状态失败(不影响聊天记录)", zap.Error(err))
-				}
-			}
-		}
 	}
 
 	return nil
