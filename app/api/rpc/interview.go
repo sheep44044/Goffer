@@ -35,3 +35,18 @@ func StartInterview(ctx context.Context, req *interview.StartInterviewReq) (*int
 func ChatStream(ctx context.Context, req *interview.ChatReq, opts ...streamcall.Option) (interviewservice.InterviewService_ChatStreamClient, error) {
 	return interviewStreamClient.ChatStream(ctx, req, opts...)
 }
+
+func ResumeSession(ctx context.Context, req *interview.ResumeSessionReq) (*interview.ResumeSessionResp, error) {
+	resp, err := interviewClient.ResumeSession(ctx, req)
+	if err != nil {
+		logger.ErrorCtx(ctx, "调用 Interview.ResumeSession 失败",
+			zap.String("session_id", req.SessionId),
+			zap.Error(err))
+		return nil, err
+	}
+
+	if resp.Resp.Code != 0 {
+		return nil, errno.NewErrNo(resp.Resp.Code, resp.Resp.Message)
+	}
+	return resp, nil
+}

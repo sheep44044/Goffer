@@ -102,6 +102,7 @@
         <span id="voiceLabel" style="font-size:13px">语音未连接</span>
         <div class="mic-bar"><div class="mic-level" id="micLevel"></div></div>
         <button class="btn btn-sm btn-outline" id="muteBtn" onclick="toggleMute()" disabled>🎤 静音</button>
+        <button class="btn btn-sm" id="voiceModeBtn" onclick="toggleVoiceMode()" style="background:var(--border);color:var(--text-muted)">🎙️ 语音对话</button>
       </div>
       <!-- FSM 进度条 -->
       <div class="fsm-steps" id="fsmSteps">
@@ -224,7 +225,8 @@ function renderFSM(){
 }
 
 // ==================== WebRTC Voice ====================
-let pc,ws,micStream,cameraStream,dataChannel,audioCtx,analyser,vadRunning,reconnectTimer,isMuted,wasSpeaking;
+let pc,ws,micStream,cameraStream,dataChannel,audioCtx,analyser,vadRunning,reconnectTimer,reconnecting,isMuted,wasSpeaking;
+let recognition,synth,voiceMode=false,ttsSpeaking=false;
 
 async function startInterview(){
   hide('startError');id('startBtn').disabled=true;id('startBtn').textContent='正在建立语音连接...';
@@ -279,10 +281,11 @@ function connectWS(){
   ws = new WebSocket(WS_URL);
   ws.onopen = async ()=>{
     hide('reconnectBanner');
-    if(pc.signalingState!=='stable'){ /* already negotiating, wait */ return; }
+    if(pc.signalingState!=='stable') return;
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     wsSend({type:'offer',room_id:sessionId,user_id:username,sdp:offer.sdp});
+    if(reconnecting){ reconnecting=false; await restoreSession(); }
   };
   ws.onmessage = async e => {
     const msg = JSON.parse(e.data);
@@ -294,8 +297,24 @@ function connectWS(){
 
 function scheduleReconnect(){
   if(reconnectTimer||!sessionId)return;
+  reconnecting = true;
   id('reconnectBanner').classList.add('show');
   reconnectTimer = setTimeout(()=>{ reconnectTimer=null; if(sessionId) connectWS(); }, 3000);
+}
+
+// ==================== Session Restore ====================
+async function restoreSession(){
+  if(!sessionId)return;
+  try{
+    const r=await api('/api/interview/resume',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId})});
+    const d=await r.json();
+    if(d.code!==0||!d.data)return;
+    const {fsm_state, round, history}=d.data;
+    fsmStage=fsm_state||'greeting'; fsmStageRound=round||0; renderFSM();
+    id('chatBox').innerHTML='';
+    if(history) for(const m of history) addChatMsg(m.role, m.content);
+    addChatMsg('system','✅ 会话已恢复');
+  }catch(e){ console.error('恢复会话失败:',e); }
 }
 
 // ==================== VAD (with interrupt feedback) ====================
@@ -328,7 +347,7 @@ function startVAD(audioTrack){
 
 function markInterrupt(){
   totalInterrupts++;
-  // 标记当前 AI 气泡为被打断
+  stopTTS(); // 打断时停止 AI 语音朗读
   const bubbles = document.querySelectorAll('.chat-msg.ai .bubble');
   const last = bubbles[bubbles.length-1];
   if(last && currentAiMsg && currentAiMsg.length > 0){
@@ -359,6 +378,68 @@ function toggleMute(){
 function wsSend(msg){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(msg))}
 function toggleCamera(){const v=id('cameraPreview');v.style.display=v.style.display==='none'?'':'none';}
 
+// ==================== Web Speech API (STT + TTS) ====================
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+function toggleVoiceMode(){
+  voiceMode = !voiceMode;
+  const btn = id('voiceModeBtn');
+  if(voiceMode){
+    btn.style.background='var(--success)'; btn.style.color='#fff'; btn.textContent='🎙️ 语音对话: ON';
+    startSpeechRecognition();
+  }else{
+    btn.style.background='var(--border)'; btn.style.color='var(--text-muted)'; btn.textContent='🎙️ 语音对话';
+    stopSpeechRecognition();
+  }
+}
+
+function startSpeechRecognition(){
+  if(!SpeechRecognition){ addChatMsg('system','⚠️ 当前浏览器不支持语音识别（请使用 Chrome 或 Edge）'); return; }
+  stopSpeechRecognition();
+  recognition = new SpeechRecognition();
+  recognition.lang = 'zh-CN';
+  recognition.interimResults = false;
+  recognition.continuous = true;
+  recognition.onresult = e => {
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      if(e.results[i].isFinal){
+        const text = e.results[i][0].transcript.trim();
+        if(text) sendMessage(text);
+      }
+    }
+  };
+  recognition.onerror = e => {
+    if(e.error==='no-speech'||e.error==='aborted') return;
+    addChatMsg('system','⚠️ 语音识别错误: '+e.error);
+  };
+  recognition.onend = ()=>{
+    if(voiceMode) recognition.start(); // 自动重启，保持持续监听
+  };
+  recognition.start();
+  addChatMsg('system','🎙️ 语音识别已开启，直接说话即可');
+}
+
+function stopSpeechRecognition(){
+  if(recognition){ try{recognition.stop()}catch(e){}; recognition=null; }
+}
+
+function speakText(text){
+  if(!voiceMode||!window.speechSynthesis) return;
+  stopTTS();
+  synth = new SpeechSynthesisUtterance(text);
+  synth.lang = 'zh-CN';
+  synth.rate = 1.1;
+  synth.onstart = ()=>{ ttsSpeaking = true; };
+  synth.onend = synth.onerror = ()=>{ ttsSpeaking = false; synth = null; };
+  window.speechSynthesis.speak(synth);
+}
+
+function stopTTS(){
+  if(synth){ synth.onend = null; synth.onerror = null; }
+  window.speechSynthesis.cancel();
+  ttsSpeaking = false; synth = null;
+}
+
 // ==================== SSE Chat ====================
 let currentAiMsg='';
 function addChatMsg(role,text){
@@ -386,7 +467,7 @@ function sendMessage(){
       const lines=buf.split('\n');buf=lines.pop()||'';
       for(const l of lines){
         if(l.startsWith('data:')){
-          const c=l.slice(5).trim();if(c==='[DONE]'){advanceFSM();continue}
+          const c=l.slice(5).trim();if(c==='[DONE]'){advanceFSM();speakText(currentAiMsg);continue}
           currentAiMsg+=c;aiDiv.querySelector('.bubble').textContent=currentAiMsg;
           id('chatBox').scrollTop=id('chatBox').scrollHeight;
         }
@@ -402,6 +483,9 @@ function sendMessage(){
 // ==================== Cleanup ====================
 function endInterview(){
   vadRunning=false;if(reconnectTimer){clearTimeout(reconnectTimer);reconnectTimer=null}
+  stopSpeechRecognition(); stopTTS(); voiceMode = false;
+  const vbtn = id('voiceModeBtn');
+  if(vbtn){ vbtn.style.background='var(--border)'; vbtn.style.color='var(--text-muted)'; vbtn.textContent='🎙️ 语音对话'; }
   if(pc){pc.close();pc=null} if(ws){ws.close();ws=null}
   if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null}
   if(cameraStream){cameraStream.getTracks().forEach(t=>t.stop());cameraStream=null}

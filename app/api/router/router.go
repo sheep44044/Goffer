@@ -31,6 +31,7 @@ func InitRouter(h *server.Hertz, jwtManager *jwt.JWTManager) {
 	{
 		interviewGroup.POST("/start", interview.StartInterview)
 		interviewGroup.POST("/chat", interview.ChatStream)
+		interviewGroup.POST("/resume", interview.ResumeSession)
 	}
 
 	knowledgeGroup := h.Group("/api/knowledge")
