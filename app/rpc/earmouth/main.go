@@ -1,4 +1,4 @@
-package earmouth
+package main
 
 import (
 	"Goffer/app/rpc/earmouth/config"

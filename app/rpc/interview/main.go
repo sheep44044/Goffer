@@ -1,4 +1,4 @@
-package interview
+package main
 
 import (
 	"Goffer/app/rpc/interview/config"

@@ -1,4 +1,4 @@
-package media
+package main
 
 import (
 	"Goffer/app/rpc/media/config"

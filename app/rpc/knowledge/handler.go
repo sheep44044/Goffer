@@ -1,4 +1,4 @@
-package knowledge
+package main
 
 import (
 	"Goffer/app/rpc/knowledge/service"

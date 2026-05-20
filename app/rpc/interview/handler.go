@@ -1,4 +1,4 @@
-package interview
+package main
 
 import (
 	"Goffer/app/rpc/interview/service"
@@ -51,6 +51,27 @@ func (s interviewServiceImpl) StartInterview(ctx context.Context, req *interview
 		logger.ErrorCtx(ctx, "开始面试失败",
 			zap.String("user_id", req.UserId),
 			zap.String("resume_id", req.ResumeId),
+			zap.Error(err))
+		resp.Resp = pack.BuildBaseRespCtx(ctx, err)
+		return resp, nil
+	}
+
+	resp.Resp = pack.BuildBaseResp(errno.Success)
+	return resp, nil
+}
+
+func (s interviewServiceImpl) ResumeSession(ctx context.Context, req *interview.ResumeSessionReq) (resp *interview.ResumeSessionResp, err error) {
+	resp = new(interview.ResumeSessionResp)
+
+	if len(req.SessionId) == 0 {
+		resp.Resp = pack.BuildBaseResp(errno.ParamErr)
+		return resp, nil
+	}
+
+	resp, err = service.NewResumeSessionService(s.svc).ResumeSession(ctx, req)
+	if err != nil {
+		logger.ErrorCtx(ctx, "恢复会话失败",
+			zap.String("session_id", req.SessionId),
 			zap.Error(err))
 		resp.Resp = pack.BuildBaseRespCtx(ctx, err)
 		return resp, nil

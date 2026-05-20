@@ -1,4 +1,4 @@
-package earmouth
+package main
 
 import (
 	"context"
