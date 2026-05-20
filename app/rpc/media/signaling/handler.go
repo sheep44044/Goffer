@@ -3,6 +3,7 @@ package signaling
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -118,7 +119,12 @@ func (h *SignalHandler) handleOffer(conn *websocket.Conn, msg *SignalMessage) {
 	redisCli := h.svcCtx.RedisClient
 	peer.SetOnCancel(func(rid, uid string) {
 		event := CancelEvent{RoomID: rid, Timestamp: time.Now().UnixMilli()}
-		payload, _ := json.Marshal(event)
+		payload, err := json.Marshal(event)
+		if err != nil {
+			logger.Error("序列化打断事件失败", zap.String("room", rid), zap.Error(err))
+			return
+		}
+
 		if err := redisCli.Publish(context.Background(), CancelChannel, payload).Err(); err != nil {
 			logger.Error("Redis 发布打断事件失败", zap.String("room", rid), zap.Error(err))
 		} else {
@@ -155,7 +161,12 @@ func (h *SignalHandler) sendError(conn *websocket.Conn, roomID, errMsg string) {
 }
 
 func (h *SignalHandler) sendJSON(conn *websocket.Conn, msg SignalMessage) {
-	data, _ := json.Marshal(msg)
+	data, err := json.Marshal(msg)
+	if err != nil {
+		logger.Error("序列化信令消息失败", zap.String("room", msg.RoomID), zap.Error(err))
+		return
+	}
+
 	if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
 		logger.Warn("信令发送消息失败", zap.Error(err))
 	}
@@ -168,7 +179,7 @@ func (h *SignalHandler) StartSignalServer(addr string) {
 
 	go func() {
 		logger.Info("HTTP 信令服务启动", zap.String("addr", "http://"+addr+"/ws"))
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("信令服务异常退出", zap.Error(err))
 		}
 	}()

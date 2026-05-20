@@ -2,12 +2,14 @@ package mq
 
 import (
 	"Goffer/app/rpc/user/config"
+	"Goffer/pkg/logger"
 	"context"
 	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/segmentio/kafka-go"
+	"go.uber.org/zap"
 )
 
 type KafkaProducer struct {
@@ -39,25 +41,30 @@ type ParseTask struct {
 }
 
 // SendResumeParseTask 发送简历解析任务
-func (p *KafkaProducer) SendResumeParseTask(task ParseTask) error {
-	msgBytes, _ := json.Marshal(task)
+func (p *KafkaProducer) SendResumeParseTask(ctx context.Context, task ParseTask) error {
+	msgBytes, err := json.Marshal(task)
+	if err != nil {
+		return fmt.Errorf("failed to marshal ParseTask: %w", err)
+	}
 
 	msg := kafka.Message{
 		Value: msgBytes,
 	}
 
 	// 发送消息，使用 context 控制超时等
-	err := p.writer.WriteMessages(context.Background(), msg)
+	err = p.writer.WriteMessages(ctx, msg)
 	if err != nil {
 		return fmt.Errorf("failed to send msg to kafka: %w", err)
 	}
 
-	// 注意：kafka-go 的 WriteMessages 不会直接返回具体的 partition 和 offset
-	fmt.Println("Task sent successfully to kafka topic: resume_parse_topic")
+	logger.InfoCtx(ctx, "Task sent successfully to kafka topic: resume_parse_topic",
+		zap.String("resume_id", task.ResumeID),
+		zap.String("file_type", task.FileType),
+	)
+
 	return nil
 }
 
-// 建议在服务关闭时调用此方法清理资源
 func (p *KafkaProducer) CloseProducer() {
 	if p.writer != nil {
 		p.writer.Close()

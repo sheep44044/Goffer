@@ -5,15 +5,18 @@ import (
 	"Goffer/app/api/router"
 	"Goffer/app/api/rpc"
 	"Goffer/pkg/jwt"
+	"Goffer/pkg/logger"
 	"Goffer/pkg/telemetry"
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/hertz-contrib/cors"
 	"github.com/hertz-contrib/obs-opentelemetry/tracing"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -37,8 +40,22 @@ func main() {
 	// 4. 初始化 Hertz 引擎
 	// 监听 8080 端口，前端请求将发往这里
 	// 1. 初始化全局 OTel，指向本地 4317 端口
-	shutdown, _ := telemetry.InitOTel("goffer-api-gateway", "localhost:4317")
-	defer shutdown(context.Background())
+	shutdown, err := telemetry.InitOTel("goffer-api-gateway", "localhost:4317")
+	if err != nil {
+		log.Fatalf("Failed to initialize OTel: %v", err)
+	}
+	defer func() {
+		// 如果 OTel Collector 网关此时断开了，直接调用 shutdown 可能会导致整个 main 进程永久卡死在退出阶段。
+		// 因此必须构建一个带 Timeout 的 Context，规定其必须在 5 秒内平滑完成内存刷新。
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if shutdownErr := shutdown(ctx); shutdownErr != nil {
+			logger.WarnCtx(ctx, "Warning: OpenTelemetry shutdown failed", zap.Error(shutdownErr))
+		} else {
+			logger.WarnCtx(ctx, "OpenTelemetry telemetry tracing flush and shutdown cleanly.")
+		}
+	}()
 
 	// 2. 注入 Hertz OTel Tracer
 	tracer, config := tracing.NewServerTracer()

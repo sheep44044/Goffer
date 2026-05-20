@@ -17,7 +17,10 @@ type QuestionParseTask struct {
 }
 
 func (p *KafkaProducer) SendQuestionParseTask(ctx context.Context, task QuestionParseTask) error {
-	msgBytes, _ := json.Marshal(task)
+	msgBytes, err := json.Marshal(task)
+	if err != nil {
+		return fmt.Errorf("failed to marshal QuestionParseTask: %w", err)
+	}
 
 	if err := p.questionWriter.WriteMessages(ctx, kafka.Message{Value: msgBytes}); err != nil {
 		return fmt.Errorf("failed to send Question msg to kafka: %w", err)

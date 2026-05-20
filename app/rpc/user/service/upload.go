@@ -41,7 +41,7 @@ func (s *UploadResumeService) UploadResume(ctx context.Context, req *user.Upload
 		return "", "", fmt.Errorf("db create resume failed: %w", err)
 	}
 
-	err = s.svc.Kafka.SendResumeParseTask(mq.ParseTask{
+	err = s.svc.Kafka.SendResumeParseTask(ctx, mq.ParseTask{
 		ResumeID: resumeID,
 		FileURL:  fileURL,
 		FileType: req.ContentType,

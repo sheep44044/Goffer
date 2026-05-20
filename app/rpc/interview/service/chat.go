@@ -145,6 +145,15 @@ func (s *ChatService) advanceFSM(ctx context.Context, sessionID string) error {
 	fsmState.Round = round
 	// resume_id 天然还在 fsmState 里，不需要额外处理！
 
-	fsmBytes, _ := json.Marshal(fsmState)
-	return s.svc.Cache.Set(ctx, fsmKey, fsmBytes, 2*time.Hour).Err()
+	fsmBytes, err := json.Marshal(fsmState)
+	if err != nil {
+		return fmt.Errorf("序列化状态机失败: %w", err)
+	}
+
+	// 4. 写回 Redis 并包裹可能发生的高并发写入网络错误
+	if err := s.svc.Cache.Set(ctx, fsmKey, fsmBytes, 2*time.Hour).Err(); err != nil {
+		return fmt.Errorf("同步状态机到 Redis 失败: %w", err)
+	}
+
+	return nil
 }
