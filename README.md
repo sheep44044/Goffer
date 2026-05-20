@@ -44,7 +44,13 @@ go run app/api/main.go &          # API 网关最后启动 (:8080)
 make stop
 ```
 
-### 3. 可观测面板
+### 3. 启动前端
+
+```bash
+make frontend
+```
+
+### 4. 可观测面板
 
 | 面板 | 地址 |
 |------|------|
@@ -54,7 +60,7 @@ make stop
 | MinIO 控制台 | `http://localhost:9001` |
 | Prometheus | `http://localhost:9090` |
 
-### 4. 面试 API 流程
+### 5. 面试 API 流程
 
 ```bash
 # 注册 & 登录

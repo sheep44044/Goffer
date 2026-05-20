@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Goffer - 知识库管理</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="header"><div class="container"><h1>📚 Goffer 知识库管理</h1><button class="btn btn-outline btn-sm" onclick="logout()">退出</button></div></div>
+<div class="container">
+
+  <!-- 登录 -->
+  <div id="loginCard" class="card">
+    <h2>面试官登录</h2>
+    <label for="loginUser">用户名</label><input id="loginUser" placeholder="请输入用户名">
+    <label for="loginPass">密码</label><input id="loginPass" type="password" placeholder="请输入密码">
+    <button class="btn btn-primary" onclick="login()">登录</button>
+    <div id="loginError" class="alert alert-error" style="display:none;margin-top:8px"></div>
+  </div>
+
+  <!-- 管理面板 -->
+  <div id="adminPanel" style="display:none">
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('jdManual')">✍️ 录入 JD</button>
+      <button class="tab" onclick="switchTab('jdCsv')">📤 批量导入 JD</button>
+      <button class="tab" onclick="switchTab('qManual')">✍️ 录入题目</button>
+      <button class="tab" onclick="switchTab('qCsv')">📤 批量导入题目</button>
+    </div>
+
+    <!-- JD 手动录入 -->
+    <div class="card" id="tabJdManual">
+      <h2>手动录入 JD</h2>
+      <label for="jdCompany">公司名称 *</label><input id="jdCompany" placeholder="如: 字节跳动">
+      <label for="jdTitle">职位标题 *</label><input id="jdTitle" placeholder="如: 高级 Golang 工程师">
+      <label for="jdResp">岗位职责 *</label><textarea id="jdResp" placeholder="描述该岗位的主要职责..."></textarea>
+      <label for="jdReq">任职要求 *</label><textarea id="jdReq" placeholder="描述任职所需的技术栈和经验..."></textarea>
+      <label for="jdTagInput">标签</label><div style="display:flex;gap:8px"><input id="jdTagInput" placeholder="输入标签后回车添加" onkeydown="if(event.key==='Enter'){event.preventDefault();addTag('jd')}"><button class="btn btn-outline btn-sm" onclick="addTag('jd')">添加</button></div>
+      <div class="tag-list" id="jdTags"></div>
+      <button class="btn btn-primary" onclick="ingestJD()" style="margin-top:16px">提交 JD</button>
+      <div id="jdMsg" style="margin-top:8px"></div>
+    </div>
+
+    <!-- JD CSV 上传 -->
+    <div class="card" id="tabJdCsv" style="display:none">
+      <h2>批量导入 JD (CSV)</h2>
+      <div class="alert alert-info" style="margin-bottom:16px">CSV 格式要求: 公司,岗位,职责,要求,标签（逗号分隔）</div>
+      <div class="file-drop" id="jdDrop" onclick="document.getElementById('jdFile').click()">
+        <div class="icon">📄</div><p>点击选择 CSV 文件</p>
+      </div>
+      <input type="file" id="jdFile" aria-label="选择JD CSV文件" accept=".csv" style="display:none" onchange="uploadCSV('jd')">
+      <div id="jdCsvMsg" style="margin-top:12px"></div>
+    </div>
+
+    <!-- 题目手动录入 -->
+    <div class="card" id="tabQManual" style="display:none">
+      <h2>手动录入面试题</h2>
+      <label for="qContent">题目内容 *</label><textarea id="qContent" placeholder="如: 请解释 Go 中 Channel 的底层实现原理"></textarea>
+      <label for="qAnswer">标准答案 *</label><textarea id="qAnswer" placeholder="参考答案..."></textarea>
+      <div class="row">
+        <div><label for="qDifficulty">难度</label><select id="qDifficulty"><option value="简单">简单</option><option value="中等" selected>中等</option><option value="困难">困难</option></select></div>
+        <div><label for="qTagInput">标签</label><div style="display:flex;gap:8px"><input id="qTagInput" placeholder="输入标签后回车" onkeydown="if(event.key==='Enter'){event.preventDefault();addTag('q')}"><button class="btn btn-outline btn-sm" onclick="addTag('q')">添加</button></div></div>
+      </div>
+      <div class="tag-list" id="qTags"></div>
+      <button class="btn btn-primary" onclick="ingestQuestion()" style="margin-top:16px">提交题目</button>
+      <div id="qMsg" style="margin-top:8px"></div>
+    </div>
+
+    <!-- 题目 CSV 上传 -->
+    <div class="card" id="tabQCsv" style="display:none">
+      <h2>批量导入题目 (CSV)</h2>
+      <div class="alert alert-info" style="margin-bottom:16px">CSV 格式要求: 题目内容,标准答案,难度,标签（逗号分隔）</div>
+      <div class="file-drop" id="qDrop" onclick="document.getElementById('qFile').click()">
+        <div class="icon">📄</div><p>点击选择 CSV 文件</p>
+      </div>
+      <input type="file" id="qFile" aria-label="选择题目CSV文件" accept=".csv" style="display:none" onchange="uploadCSV('q')">
+      <div id="qCsvMsg" style="margin-top:12px"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const BASE = 'http://localhost:8080';
+let token = '';
+let jdTags = [], qTags = [];
+
+// ======== Auth ========
+async function login() {
+  const u = document.getElementById('loginUser').value.trim();
+  const p = document.getElementById('loginPass').value.trim();
+  document.getElementById('loginError').style.display = 'none';
+  try {
+    const r = await fetch(BASE+'/api/user/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
+    const d = await r.json();
+    if(d.code!==0) { document.getElementById('loginError').textContent=d.message; document.getElementById('loginError').style.display=''; return; }
+    token = d.data;
+    document.getElementById('loginCard').style.display = 'none';
+    document.getElementById('adminPanel').style.display = '';
+  } catch(e) { document.getElementById('loginError').textContent='网络错误'; document.getElementById('loginError').style.display=''; }
+}
+function logout() { token='';document.getElementById('loginCard').style.display='';document.getElementById('adminPanel').style.display='none'; }
+
+// ======== Tabs ========
+function switchTab(tab) {
+  ['tabJdManual','tabJdCsv','tabQManual','tabQCsv'].forEach(id=>document.getElementById(id).style.display='none');
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  event.target.classList.add('active');
+  const map = {jdManual:'tabJdManual',jdCsv:'tabJdCsv',qManual:'tabQManual',qCsv:'tabQCsv'};
+  document.getElementById(map[tab]).style.display = '';
+}
+
+// ======== Tags ========
+function addTag(type) {
+  const input = document.getElementById(type==='jd'?'jdTagInput':'qTagInput');
+  const val = input.value.trim(); if(!val) return; input.value = '';
+  if(type==='jd') { jdTags.push(val); renderTags('jd'); }
+  else { qTags.push(val); renderTags('q'); }
+}
+function removeTag(type, idx) {
+  if(type==='jd') { jdTags.splice(idx,1); renderTags('jd'); }
+  else { qTags.splice(idx,1); renderTags('q'); }
+}
+function renderTags(type) {
+  const list = type==='jd'?jdTags:qTags;
+  const el = document.getElementById(type==='jd'?'jdTags':'qTags');
+  el.innerHTML = list.map((t,i)=>'<span class="tag">'+t+'<button onclick="removeTag(\''+type+'\','+i+')">×</button></span>').join('');
+}
+
+// ======== JD ========
+async function ingestJD() {
+  const body = {
+    company: document.getElementById('jdCompany').value.trim(),
+    title: document.getElementById('jdTitle').value.trim(),
+    responsibilities: document.getElementById('jdResp').value.trim(),
+    requirements: document.getElementById('jdReq').value.trim(),
+    tags: jdTags
+  };
+  if(!body.company||!body.title||!body.responsibilities||!body.requirements) {
+    document.getElementById('jdMsg').innerHTML = '<div class="alert alert-error">请填写所有必填字段</div>'; return;
+  }
+  const el = document.getElementById('jdMsg'); el.innerHTML = '<div class="alert alert-info">提交中...</div>';
+  try {
+    const r = await fetch(BASE+'/api/knowledge/jd/ingest',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(body)});
+    const d = await r.json();
+    el.innerHTML = d.code===0?'<div class="alert alert-success">JD 录入成功</div>':'<div class="alert alert-error">'+d.message+'</div>';
+    if(d.code===0) { document.getElementById('jdCompany').value='';document.getElementById('jdTitle').value='';document.getElementById('jdResp').value='';document.getElementById('jdReq').value='';jdTags=[];renderTags('jd'); }
+  } catch(e) { el.innerHTML = '<div class="alert alert-error">网络错误</div>'; }
+}
+
+// ======== Question ========
+async function ingestQuestion() {
+  const diff = document.getElementById('qDifficulty').value;
+  const body = {
+    question_content: document.getElementById('qContent').value.trim(),
+    standard_answer: document.getElementById('qAnswer').value.trim(),
+    difficulty: diff==='简单'?'简单':diff==='困难'?'困难':'中等',
+    tags: qTags
+  };
+  if(!body.question_content||!body.standard_answer) {
+    document.getElementById('qMsg').innerHTML = '<div class="alert alert-error">请填写题目内容和标准答案</div>'; return;
+  }
+  const el = document.getElementById('qMsg'); el.innerHTML = '<div class="alert alert-info">提交中...</div>';
+  try {
+    const r = await fetch(BASE+'/api/knowledge/question/ingest',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(body)});
+    const d = await r.json();
+    el.innerHTML = d.code===0?'<div class="alert alert-success">题目录入成功</div>':'<div class="alert alert-error">'+d.message+'</div>';
+    if(d.code===0) { document.getElementById('qContent').value='';document.getElementById('qAnswer').value='';qTags=[];renderTags('q'); }
+  } catch(e) { el.innerHTML = '<div class="alert alert-error">网络错误</div>'; }
+}
+
+// ======== CSV Upload ========
+async function uploadCSV(type) {
+  const fileInput = document.getElementById(type==='jd'?'jdFile':'qFile');
+  const msgEl = document.getElementById(type==='jd'?'jdCsvMsg':'qCsvMsg');
+  const file = fileInput.files[0]; if(!file) return;
+  const fd = new FormData(); fd.append('file',file);
+  msgEl.innerHTML = '<div class="alert alert-info">上传并解析中...</div>';
+  const endpoint = type==='jd'?'/api/knowledge/jd/upload':'/api/knowledge/question/upload';
+  try {
+    const r = await fetch(BASE+endpoint,{method:'POST',headers:{'Authorization':'Bearer '+token},body:fd});
+    const d = await r.json();
+    msgEl.innerHTML = d.code===0
+      ? '<div class="alert alert-success">导入成功！TaskID: '+d.data.taskID+'</div>'
+      : '<div class="alert alert-error">'+d.message+'</div>';
+  } catch(e) { msgEl.innerHTML = '<div class="alert alert-error">网络错误</div>'; }
+}
+</script>
+</body>
+</html>
