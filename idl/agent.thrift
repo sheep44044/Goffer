@@ -30,7 +30,7 @@ struct RetrieveReq {
 
     5: optional string resume_id  // 查简历时必传
     6: optional string difficulty // 查题库时可选
-    7: optional string tag        // 查题库/JD时可选
+    7: optional list<string> tags        // 查题库/JD时可选
     8: optional string company    // 查JD时可选
 }
 

@@ -1,13 +1,43 @@
 package question
 
 import (
+	"Goffer/app/rpc/agent/svc"
+	"Goffer/pkg/logger"
 	"context"
 	"encoding/json"
 	"fmt"
 
-	"github.com/cloudwego/eino-ext/components/indexer/qdrant"
+	qdrant_indexer "github.com/cloudwego/eino-ext/components/indexer/qdrant"
+	"github.com/cloudwego/eino/components/indexer"
 	"github.com/cloudwego/eino/schema"
+	"github.com/qdrant/go-client/qdrant"
+	"go.uber.org/zap"
 )
+
+type QuestionWorker struct {
+	svc     *svc.ServiceContext
+	indexer indexer.Indexer
+}
+
+func NewQuestionWorker(svc *svc.ServiceContext) (*QuestionWorker, error) {
+	ctx := context.Background()
+
+	idx, err := qdrant_indexer.NewIndexer(ctx, &qdrant_indexer.Config{
+		Client:     svc.QdrantClient,
+		Collection: "goffer_question_bank",
+		Embedding:  svc.Embedder,
+		VectorDim:  2048,
+		Distance:   qdrant.Distance_Cosine,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("初始化 Question Indexer 失败: %w", err)
+	}
+
+	return &QuestionWorker{
+		svc:     svc,
+		indexer: idx,
+	}, nil
+}
 
 type QuestionParseTask struct {
 	QuestionID      string   `json:"question_id"`
@@ -18,16 +48,13 @@ type QuestionParseTask struct {
 }
 
 func (w *QuestionWorker) IngestQuestion(ctx context.Context, jsonData []byte) error {
-	fmt.Println("[RAG 服务] 开始处理单道题目入库任务...")
+	logger.InfoCtx(ctx, "开始处理单道题目入库任务")
 
-	// 1. 解析 JSON 数据 (与 Service 层投递的数据结构保持绝对一致)
 	var task QuestionParseTask
 	if err := json.Unmarshal(jsonData, &task); err != nil {
 		return fmt.Errorf("解析 Kafka 题目数据失败: %w", err)
 	}
 
-	// 2. 将结构化题目直接转换为 Eino Documents
-	// 将问题和标准答案拼接成供大模型阅读的 Context
 	content := fmt.Sprintf("【面试题】%s\n【标准答案】%s", task.QuestionContent, task.StandardAnswer)
 
 	doc := &schema.Document{
@@ -39,28 +66,14 @@ func (w *QuestionWorker) IngestQuestion(ctx context.Context, jsonData []byte) er
 			"difficulty": task.Difficulty,
 		},
 	}
-
-	// Eino 的接口要求传入数组，我们把单条 doc 包进数组即可
 	chunks := []*schema.Document{doc}
+	logger.InfoCtx(ctx, "题目解析完成", zap.String("question_id", task.QuestionID))
 
-	fmt.Printf("-> 1. 题目解析完成，QuestionID: %s\n", task.QuestionID)
-
-	// 3. 初始化针对题库 Collection 的 Qdrant Indexer
-	indexer, err := qdrant.NewIndexer(ctx, &qdrant.Config{
-		Client:     w.svc.QdrantClient,
-		Collection: "goffer_question_bank",
-	})
-	if err != nil {
-		return fmt.Errorf("初始化 Qdrant Indexer 失败: %w", err)
-	}
-
-	// 4. 执行向量化并存入 Qdrant
-	// 这里 Eino 框架内部会自动调用 Embedding 模型将 Content 转化为向量，并连同 Metadata 一起存入
-	ids, err := indexer.Store(ctx, chunks)
+	ids, err := w.indexer.Store(ctx, chunks)
 	if err != nil {
 		return fmt.Errorf("题目向量入库失败, QuestionID: %s, err: %w", task.QuestionID, err)
 	}
 
-	fmt.Printf("-> 2. 题目向量入库完成，成功存入 Qdrant, ID: %s！\n", ids[0])
+	logger.InfoCtx(ctx, "题目向量入库完成", zap.String("qdrant_id", ids[0]))
 	return nil
 }

@@ -2,13 +2,14 @@ package minio
 
 import (
 	"Goffer/app/rpc/agent/config"
+	"Goffer/pkg/logger"
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"go.uber.org/zap"
 )
 
 type FileStorage struct {
@@ -18,14 +19,12 @@ type FileStorage struct {
 	publicURL string
 }
 
-// NewFileStorage 初始化保持你的原样即可 (略微修复了错误处理)
 func NewFileStorage(cfg *config.Config) (*FileStorage, error) {
 	minioClient, err := minio.New(cfg.MinIO.Endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.MinIO.AccessKey, cfg.MinIO.SecretKey, ""),
 		Secure: false,
 	})
 	if err != nil {
-		// 返回具体错误给调用方
 		return nil, fmt.Errorf("failed to initialize minio client: %w", err)
 	}
 
@@ -38,17 +37,16 @@ func NewFileStorage(cfg *config.Config) (*FileStorage, error) {
 		err := minioClient.MakeBucket(ctx, bucketName, minio.MakeBucketOptions{})
 		if err == nil {
 			policy := fmt.Sprintf(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::%s/*"]}]}`, bucketName)
-			// 在生产环境中，建议检查 Policy 设置是否成功
 			if err := minioClient.SetBucketPolicy(ctx, bucketName, policy); err != nil {
-				log.Printf("Warning: Bucket created but failed to set policy: %v", err)
+				logger.Warn("Bucket 已创建但设置策略失败", zap.String("bucket", bucketName), zap.Error(err))
 			} else {
-				log.Printf("Bucket %s created and policy set.", bucketName)
+				logger.Info("Bucket 已创建并设置策略", zap.String("bucket", bucketName))
 			}
 		} else {
-			log.Printf("Failed to create bucket: %v", err)
+			logger.Warn("创建 Bucket 失败", zap.String("bucket", bucketName), zap.Error(err))
 		}
 	} else if errBucket != nil {
-		log.Printf("Warning: check bucket exists failed: %v", errBucket)
+		logger.Warn("检查 Bucket 是否存在失败", zap.String("bucket", bucketName), zap.Error(errBucket))
 	}
 
 	return &FileStorage{

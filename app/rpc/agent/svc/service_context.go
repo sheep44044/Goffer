@@ -12,21 +12,26 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/cloudwego/eino-ext/components/embedding/ark"
 	ark_model "github.com/cloudwego/eino-ext/components/model/ark"
+	"github.com/cloudwego/eino/components/embedding"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/qdrant/go-client/qdrant"
 	"github.com/redis/go-redis/v9"
 )
 
 type ServiceContext struct {
-	Config          *config.Config
-	Minio           *minio.FileStorage
-	QdrantClient    *qdrant.Client
-	AI              *ai.AIService
+	Config       *config.Config
+	RedisClient  *redis.Client
+	Minio        *minio.FileStorage
+	QdrantClient *qdrant.Client
+
+	AI            *ai.AIService
+	EinoChatModel model.ToolCallingChatModel
+	Embedder      embedding.Embedder
+
 	UserClient      userservice.Client
 	InterviewClient interviewservice.Client
-	EinoChatModel   model.ToolCallingChatModel
-	RedisClient     *redis.Client
 	CancelManager   *cancelmgr.CancelManager // 全链路打断管理
 }
 
@@ -50,6 +55,14 @@ func NewServiceContext(cfg *config.Config) *ServiceContext {
 		panic(err)
 	}
 
+	Embedder, err := ark.NewEmbedder(context.Background(), &ark.EmbeddingConfig{
+		APIKey: cfg.VolcEngine.Key,
+		Model:  cfg.VolcEngine.EmbedModelID,
+	})
+	if err != nil {
+		panic(err)
+	}
+
 	redisClient := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%d", cfg.Redis.Host, cfg.Redis.Port),
 		Password: cfg.Redis.Password,
@@ -60,12 +73,13 @@ func NewServiceContext(cfg *config.Config) *ServiceContext {
 
 	return &ServiceContext{
 		Config:        cfg,
+		RedisClient:   redisClient,
 		Minio:         minio,
 		QdrantClient:  qdrant,
-		UserClient:    userRpcClient,
 		AI:            ai,
 		EinoChatModel: chatModel,
-		RedisClient:   redisClient,
+		Embedder:      Embedder,
+		UserClient:    userRpcClient,
 		CancelManager: cancelMgr,
 	}
 }

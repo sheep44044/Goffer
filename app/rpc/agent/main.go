@@ -1,12 +1,16 @@
 package main
 
 import (
+	"Goffer/app/rpc/agent/bot"
 	"Goffer/app/rpc/agent/config"
 	"Goffer/app/rpc/agent/svc"
+	"Goffer/app/rpc/agent/tools"
 	"Goffer/app/rpc/agent/worker"
 	"Goffer/kitex_gen/agent/agentservice"
 	"Goffer/pkg/contextutil"
+	"Goffer/pkg/logger"
 	middleware2 "Goffer/pkg/middleware/rpc"
+	"context"
 	"fmt"
 	"net"
 
@@ -16,6 +20,7 @@ import (
 	"github.com/cloudwego/kitex/server"
 	"github.com/kitex-contrib/obs-opentelemetry/tracing"
 	etcd "github.com/kitex-contrib/registry-etcd"
+	"go.uber.org/zap"
 )
 
 func Init(cfg *config.Config) *svc.ServiceContext {
@@ -44,12 +49,17 @@ func main() {
 	}
 
 	svc := Init(cfg)
+	botManager := bot.InitBotManager(svc)
+	if err := tools.InitTools(); err != nil {
+		panic(fmt.Errorf("初始化 MCP 工具失败: %w", err))
+	}
+	botManager.LoadAllPresets()
 
 	// 启动 Redis Pub/Sub 打断事件订阅
 	svc.CancelManager.SubscribeCancelEvents(svc.RedisClient)
 
 	mqEngine := worker.NewMQEngine(svc)
-	go mqEngine.Start()
+	go mqEngine.Start(context.Background())
 
 	svr := agentservice.NewServer(NewAgentService(svc),
 		server.WithServerBasicInfo(&rpcinfo.EndpointBasicInfo{ServiceName: cfg.Service.Name}),
@@ -63,7 +73,7 @@ func main() {
 		server.WithSuite(tracing.NewServerSuite()),
 		server.WithRegistry(r), // registry
 	)
-	fmt.Printf("User RPC Server 正在启动，监听地址: %s, 注册到 Etcd: %s\n", listenAddr, cfg.Etcd.Address)
+	logger.Info("Agent RPC Server 正在启动", zap.String("listen_addr", listenAddr), zap.String("etcd", cfg.Etcd.Address))
 
 	err = svr.Run()
 	if err != nil {

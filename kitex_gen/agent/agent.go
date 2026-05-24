@@ -151,14 +151,14 @@ var fieldIDToName_ChatStreamResp = map[int16]string{
 }
 
 type RetrieveReq struct {
-	UserId     string  `thrift:"user_id,1,required" frugal:"1,required,string" json:"user_id"`
-	Collection string  `thrift:"collection,2,required" frugal:"2,required,string" json:"collection"`
-	Query      string  `thrift:"query,3,required" frugal:"3,required,string" json:"query"`
-	TopK       *int32  `thrift:"top_k,4,optional" frugal:"4,optional,i32" json:"top_k,omitempty"`
-	ResumeId   *string `thrift:"resume_id,5,optional" frugal:"5,optional,string" json:"resume_id,omitempty"`
-	Difficulty *string `thrift:"difficulty,6,optional" frugal:"6,optional,string" json:"difficulty,omitempty"`
-	Tag        *string `thrift:"tag,7,optional" frugal:"7,optional,string" json:"tag,omitempty"`
-	Company    *string `thrift:"company,8,optional" frugal:"8,optional,string" json:"company,omitempty"`
+	UserId     string   `thrift:"user_id,1,required" frugal:"1,required,string" json:"user_id"`
+	Collection string   `thrift:"collection,2,required" frugal:"2,required,string" json:"collection"`
+	Query      string   `thrift:"query,3,required" frugal:"3,required,string" json:"query"`
+	TopK       *int32   `thrift:"top_k,4,optional" frugal:"4,optional,i32" json:"top_k,omitempty"`
+	ResumeId   *string  `thrift:"resume_id,5,optional" frugal:"5,optional,string" json:"resume_id,omitempty"`
+	Difficulty *string  `thrift:"difficulty,6,optional" frugal:"6,optional,string" json:"difficulty,omitempty"`
+	Tags       []string `thrift:"tags,7,optional" frugal:"7,optional,list<string>" json:"tags,omitempty"`
+	Company    *string  `thrift:"company,8,optional" frugal:"8,optional,string" json:"company,omitempty"`
 }
 
 func NewRetrieveReq() *RetrieveReq {
@@ -207,13 +207,13 @@ func (p *RetrieveReq) GetDifficulty() (v string) {
 	return *p.Difficulty
 }
 
-var RetrieveReq_Tag_DEFAULT string
+var RetrieveReq_Tags_DEFAULT []string
 
-func (p *RetrieveReq) GetTag() (v string) {
-	if !p.IsSetTag() {
-		return RetrieveReq_Tag_DEFAULT
+func (p *RetrieveReq) GetTags() (v []string) {
+	if !p.IsSetTags() {
+		return RetrieveReq_Tags_DEFAULT
 	}
-	return *p.Tag
+	return p.Tags
 }
 
 var RetrieveReq_Company_DEFAULT string
@@ -242,8 +242,8 @@ func (p *RetrieveReq) SetResumeId(val *string) {
 func (p *RetrieveReq) SetDifficulty(val *string) {
 	p.Difficulty = val
 }
-func (p *RetrieveReq) SetTag(val *string) {
-	p.Tag = val
+func (p *RetrieveReq) SetTags(val []string) {
+	p.Tags = val
 }
 func (p *RetrieveReq) SetCompany(val *string) {
 	p.Company = val
@@ -261,8 +261,8 @@ func (p *RetrieveReq) IsSetDifficulty() bool {
 	return p.Difficulty != nil
 }
 
-func (p *RetrieveReq) IsSetTag() bool {
-	return p.Tag != nil
+func (p *RetrieveReq) IsSetTags() bool {
+	return p.Tags != nil
 }
 
 func (p *RetrieveReq) IsSetCompany() bool {
@@ -283,7 +283,7 @@ var fieldIDToName_RetrieveReq = map[int16]string{
 	4: "top_k",
 	5: "resume_id",
 	6: "difficulty",
-	7: "tag",
+	7: "tags",
 	8: "company",
 }
 

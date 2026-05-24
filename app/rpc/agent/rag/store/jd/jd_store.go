@@ -1,13 +1,43 @@
 package jd
 
 import (
+	"Goffer/app/rpc/agent/svc"
+	"Goffer/pkg/logger"
 	"context"
 	"encoding/json"
 	"fmt"
 
-	"github.com/cloudwego/eino-ext/components/indexer/qdrant"
+	qdrant_indexer "github.com/cloudwego/eino-ext/components/indexer/qdrant"
+	"github.com/cloudwego/eino/components/indexer"
 	"github.com/cloudwego/eino/schema"
+	"github.com/qdrant/go-client/qdrant"
+	"go.uber.org/zap"
 )
+
+type JDWorker struct {
+	svc     *svc.ServiceContext
+	indexer indexer.Indexer
+}
+
+func NewJDWorker(svc *svc.ServiceContext) (*JDWorker, error) {
+	ctx := context.Background()
+
+	idx, err := qdrant_indexer.NewIndexer(ctx, &qdrant_indexer.Config{
+		Client:     svc.QdrantClient,
+		Collection: "goffer_jd_bank",
+		Embedding:  svc.Embedder,
+		VectorDim:  2048,
+		Distance:   qdrant.Distance_Cosine,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("初始化 JD Indexer 失败: %w", err)
+	}
+
+	return &JDWorker{
+		svc:     svc,
+		indexer: idx,
+	}, nil
+}
 
 type JDParseTask struct {
 	JDID             string   `json:"jd_id"`
@@ -19,16 +49,13 @@ type JDParseTask struct {
 }
 
 func (w *JDWorker) IngestJD(ctx context.Context, jsonData []byte) error {
-	fmt.Println("[RAG 服务] 开始处理单条 JD 入库任务...")
+	logger.InfoCtx(ctx, "开始处理单条 JD 入库任务")
 
-	// 1. 解析 JSON 数据
 	var task JDParseTask
 	if err := json.Unmarshal(jsonData, &task); err != nil {
 		return fmt.Errorf("解析 Kafka JD 数据失败: %w", err)
 	}
 
-	// 2. 将结构化题目直接转换为 Eino Documents
-	// 🌟 重新拼接专属于 JD 的 Context，让大模型在检索时能准确理解
 	content := fmt.Sprintf("【职位】%s\n【公司】%s\n【岗位职责】\n%s\n【任职要求】\n%s",
 		task.Title, task.Company, task.Responsibilities, task.Requirements)
 
@@ -38,30 +65,18 @@ func (w *JDWorker) IngestJD(ctx context.Context, jsonData []byte) error {
 		MetaData: map[string]any{
 			"type":    "jd_bank",
 			"tags":    task.Tags,
-			"company": task.Company, // 将公司和岗位名称作为元数据，方便后期精确过滤
+			"company": task.Company,
 			"title":   task.Title,
 		},
 	}
-
 	chunks := []*schema.Document{doc}
+	logger.InfoCtx(ctx, "JD 解析完成", zap.String("jd_id", task.JDID))
 
-	fmt.Printf("-> 1. JD 解析完成，JDID: %s\n", task.JDID)
-
-	// 3. 初始化针对 JD Collection 的 Qdrant Indexer
-	indexer, err := qdrant.NewIndexer(ctx, &qdrant.Config{
-		Client:     w.svc.QdrantClient,
-		Collection: "goffer_jd_bank", // 🌟 使用专属的 JD 向量集合
-	})
-	if err != nil {
-		return fmt.Errorf("初始化 Qdrant Indexer 失败: %w", err)
-	}
-
-	// 4. 执行向量化并存入 Qdrant
-	ids, err := indexer.Store(ctx, chunks)
+	ids, err := w.indexer.Store(ctx, chunks)
 	if err != nil {
 		return fmt.Errorf("JD 向量入库失败, JDID: %s, err: %w", task.JDID, err)
 	}
 
-	fmt.Printf("-> 2. JD 向量入库完成，成功存入 Qdrant, ID: %s！\n", ids[0])
+	logger.InfoCtx(ctx, "JD 向量入库完成", zap.String("qdrant_id", ids[0]))
 	return nil
 }

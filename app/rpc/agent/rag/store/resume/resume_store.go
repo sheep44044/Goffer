@@ -1,16 +1,46 @@
 package resume
 
 import (
+	"Goffer/app/rpc/agent/svc"
 	"Goffer/kitex_gen/user"
+	"Goffer/pkg/logger"
 	"Goffer/pkg/pdfparser"
 	"context"
 	"fmt"
 
 	"github.com/cloudwego/eino-ext/components/document/transformer/splitter/markdown"
 	"github.com/cloudwego/eino-ext/components/document/transformer/splitter/recursive"
-	"github.com/cloudwego/eino-ext/components/indexer/qdrant"
+	qdrant_indexer "github.com/cloudwego/eino-ext/components/indexer/qdrant"
+	"github.com/cloudwego/eino/components/indexer"
 	"github.com/cloudwego/eino/schema"
+	"github.com/qdrant/go-client/qdrant"
+	"go.uber.org/zap"
 )
+
+type ResumeWorker struct {
+	svc     *svc.ServiceContext
+	indexer indexer.Indexer
+}
+
+func NewResumeWorker(svc *svc.ServiceContext) (*ResumeWorker, error) {
+	ctx := context.Background()
+
+	idx, err := qdrant_indexer.NewIndexer(ctx, &qdrant_indexer.Config{
+		Client:     svc.QdrantClient,
+		Collection: "goffer_resumes",
+		Embedding:  svc.Embedder,
+		VectorDim:  2048,
+		Distance:   qdrant.Distance_Cosine,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("初始化 Resume Indexer 失败: %w", err)
+	}
+
+	return &ResumeWorker{
+		svc:     svc,
+		indexer: idx,
+	}, nil
+}
 
 type ResumeParseTask struct {
 	ResumeID string `json:"resume_id"`
@@ -19,76 +49,65 @@ type ResumeParseTask struct {
 }
 
 func (w *ResumeWorker) HandleResumeParse(ctx context.Context, task ResumeParseTask) error {
-	fmt.Printf("开始处理简历 - URL: %s, 类型: %s\n", task.FileURL, task.FileType)
+	logger.InfoCtx(ctx, "开始处理简历",
+		zap.String("file_url", task.FileURL),
+		zap.String("file_type", task.FileType),
+	)
 
-	// 1. 下载文件
 	fileBytes, err := w.svc.Minio.DownloadFile(ctx, task.FileURL)
 	if err != nil {
 		return err
 	}
-	fmt.Println("-> 1. 文件下载完成")
+	logger.InfoCtx(ctx, "文件下载完成")
 
 	var parsedText string
-	// 2. AI 提取文本
-	if task.FileType == "png" || task.FileType == "jpg" || task.FileType == "jpeg" {
+	if task.FileType == "image/png" || task.FileType == "image/jpg" || task.FileType == "image/jpeg" {
 		parsedText, err = w.svc.AI.ParseResumeToMarkdown(ctx, fileBytes, task.FileType)
 		if err != nil {
 			return err
 		}
-		fmt.Println("-> 2. 图片提为 Markdown 完成")
+		logger.InfoCtx(ctx, "图片转为 Markdown 完成")
 	} else if task.FileType == "pdf" {
-		// 假设此处 PDF 提取出的仅是纯文本
 		parsedText, err = pdfparser.ExtractTextFromPDF(fileBytes)
 		if err != nil {
 			return fmt.Errorf("PDF纯文本提取失败: %w", err)
 		}
-		fmt.Println("-> 2. PDF 文本提取完成")
+		logger.InfoCtx(ctx, "PDF 文本提取完成")
 	}
 
 	chunks, err := splitDocument(ctx, parsedText, task.FileType, task.ResumeID)
 	if err != nil {
 		return fmt.Errorf("文档切片失败: %w", err)
 	}
-	fmt.Printf("-> 3. Eino 切片完成，共分成 %d 块\n", len(chunks))
+	logger.InfoCtx(ctx, "Eino 切片完成", zap.Int("chunk_count", len(chunks)))
 
 	for _, chunk := range chunks {
 		if chunk.MetaData == nil {
 			chunk.MetaData = make(map[string]any)
 		}
-		// 注入你期望的额外元数据，Eino 会在入库时自动映射为 Qdrant 的 Payload
-
 		chunk.MetaData["resume_id"] = task.ResumeID
 	}
 
-	// 4. 存入 Qdrant (RAG 服务拥有 Qdrant 的绝对控制权)
-	indexer, err := qdrant.NewIndexer(ctx, &qdrant.Config{
-		Client:     w.svc.QdrantClient, // 复用全局的那个基础连接
-		Collection: "goffer_resumes",   // 动态指定！如果是题库任务，这里就传题库的 Collection 名
-	})
-	if err != nil {
-		return fmt.Errorf("初始化 Qdrant Indexer 失败: %w", err)
-	}
-
-	ids, err := indexer.Store(ctx, chunks)
+	ids, err := w.indexer.Store(ctx, chunks)
 	if err != nil {
 		return fmt.Errorf("向量入库失败: %w", err)
 	}
+	logger.InfoCtx(ctx, "向量入库完成", zap.Int("stored_count", len(ids)))
 
-	fmt.Printf("-> 4. 向量入库完成，成功存入 %d 条数据，Qdrant 返回的 ID 列表: %v\n", len(ids), ids)
-
-	// 5. 【关键改变】不直接操作 DB，而是通过 RPC 通知 User 服务更新状态
 	_, err = w.svc.UserClient.UpdateResumeStatus(ctx, &user.UpdateResumeStatusReq{
 		ResumeId: task.ResumeID,
 		Status:   2,
 	})
 	if err != nil {
-		return fmt.Errorf("回调 User 服务更新状态失败: %w", err)
+		logger.WarnCtx(ctx, "Qdrant入库成功但回调User状态失败，需手动修复",
+			zap.String("resume_id", task.ResumeID),
+			zap.Error(err),
+		)
 	}
 	return nil
 }
 
 func splitDocument(ctx context.Context, parsedText string, fileType string, resumeID string) ([]*schema.Document, error) {
-	// 1. 将原始文本包装成 Eino 需要的标准格式
 	doc := &schema.Document{
 		ID:      resumeID,
 		Content: parsedText,
@@ -98,9 +117,7 @@ func splitDocument(ctx context.Context, parsedText string, fileType string, resu
 	}
 	srcDocs := []*schema.Document{doc}
 
-	// 2. 根据类型选择切分策略
 	if isMarkdown(fileType) {
-		// --- 方案 A: Markdown 按标题切分 ---
 		mdConfig := &markdown.HeaderConfig{
 			Headers: map[string]string{
 				"#":   "Level 1 Heading",
@@ -118,9 +135,8 @@ func splitDocument(ctx context.Context, parsedText string, fileType string, resu
 		return mdSplitter.Transform(ctx, srcDocs)
 	}
 
-	// --- 方案 B: 纯文本按字符长度递归切分 ---
 	recConfig := &recursive.Config{
-		ChunkSize:   500, // 这里的块大小建议根据你所使用的 Embedding 模型的最大 Token 长度进行调整
+		ChunkSize:   500,
 		OverlapSize: 50,
 		Separators:  []string{"\n\n", "\n", " ", ""},
 		KeepType:    recursive.KeepTypeNone,
@@ -134,8 +150,6 @@ func splitDocument(ctx context.Context, parsedText string, fileType string, resu
 	return charSplitter.Transform(ctx, srcDocs)
 }
 
-// isMarkdown 辅助判断当前文本结构是否倾向于使用 Markdown 切分器
 func isMarkdown(fileType string) bool {
-	// 这里假设你大模型提取图片输出的格式是包含 Markdown Header 语法的
 	return fileType == "md"
 }

@@ -1,24 +1,14 @@
 package jd
 
 import (
-	"Goffer/app/rpc/agent/svc"
+	"Goffer/pkg/logger"
 	"context"
-	"log"
 
 	"github.com/segmentio/kafka-go"
+	"go.uber.org/zap"
 )
 
-type JDWorker struct {
-	svc *svc.ServiceContext
-}
-
-func NewJDWorker(svc *svc.ServiceContext) *JDWorker {
-	return &JDWorker{
-		svc: svc,
-	}
-}
-
-func (w *JDWorker) Start() {
+func (w *JDWorker) Start(ctx context.Context) {
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:     w.svc.Config.Kafka.Brokers,
 		GroupID:     "rag-jd-group",
@@ -27,29 +17,33 @@ func (w *JDWorker) Start() {
 	})
 	defer reader.Close()
 
-	ctx := context.Background()
-	log.Printf("[JD Worker] 启动成功，正在独立监听 Topic: %s\n", w.svc.Config.Kafka.JDTopic)
+	logger.Info("JD Worker 启动", zap.String("topic", w.svc.Config.Kafka.JDTopic))
 
 	for {
-		// 3. 拉取消息
 		msg, err := reader.FetchMessage(ctx)
 		if err != nil {
-			log.Printf("[JD Worker] 拉取消息失败: %v", err)
+			if ctx.Err() != nil {
+				logger.Info("JD Worker 收到关闭信号，停止拉取消息")
+				return
+			}
+			logger.Warn("JD Worker 拉取消息失败", zap.Error(err))
 			continue
 		}
 
-		// 4. 交给对应的 Handler 处理
 		err = w.IngestJD(ctx, msg.Value)
 		if err != nil {
-			log.Printf("[严重] 处理 JD 消息失败 (Topic: %s, Offset: %d): %v", msg.Topic, msg.Offset, err)
+			logger.Error("处理 JD 消息失败",
+				zap.String("topic", msg.Topic),
+				zap.Int64("offset", msg.Offset),
+				zap.Error(err),
+			)
 		} else {
-			log.Printf("[JD Worker] 成功处理 JD 消息 (Offset: %d)", msg.Offset)
+			logger.Info("JD Worker 成功处理消息", zap.Int64("offset", msg.Offset))
 		}
 
-		// 5. 提交 Offset (确认消费)
 		err = reader.CommitMessages(ctx, msg)
 		if err != nil {
-			log.Printf("[JD Worker] 提交 Offset 失败: %v", err)
+			logger.Warn("JD Worker 提交 Offset 失败", zap.Error(err))
 		}
 	}
 }

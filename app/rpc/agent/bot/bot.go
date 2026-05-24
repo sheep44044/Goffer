@@ -40,7 +40,7 @@ func NewInterviewBot(preset *presets.InterviewerPreset, svc *svc.ServiceContext)
 	// 节点 1：动态并行检索层 (Dynamic Parallel)
 	parallel := compose.NewParallel()
 
-	// 分支 C：数据透传 (无论什么面试官，都需要透传基础数据)
+	// 数据透传 (无论什么面试官，都需要透传基础数据)
 	parallel.AddLambda("raw_input", compose.InvokableLambda(func(ctx context.Context, input BotInput) (BotInput, error) {
 		return input, nil
 	}))
@@ -86,7 +86,10 @@ func NewInterviewBot(preset *presets.InterviewerPreset, svc *svc.ServiceContext)
 
 	// 节点 2：Prompt 逻辑组装层 (Lambda)
 	chain.AppendLambda(compose.InvokableLambda(func(ctx context.Context, pMap map[string]any) ([]*schema.Message, error) {
-		input := pMap["raw_input"].(BotInput)
+		input, ok := pMap["raw_input"].(BotInput)
+		if !ok {
+			return nil, fmt.Errorf("DAG内部错误: raw_input 类型不匹配")
+		}
 
 		// 安全提取：因为有些分支根据人设没有被挂载，直接使用 .(string) 会导致 panic
 		resumeTxt := "（当前面试官无需参考简历）"
