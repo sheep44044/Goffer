@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/cloudwego/eino-ext/components/document/transformer/splitter/recursive"
 	qdrant_indexer "github.com/cloudwego/eino-ext/components/indexer/qdrant"
 	"github.com/cloudwego/eino/components/indexer"
 	"github.com/cloudwego/eino/schema"
@@ -56,27 +57,55 @@ func (w *JDWorker) IngestJD(ctx context.Context, jsonData []byte) error {
 		return fmt.Errorf("解析 Kafka JD 数据失败: %w", err)
 	}
 
+	// 组装完整文本
 	content := fmt.Sprintf("【职位】%s\n【公司】%s\n【岗位职责】\n%s\n【任职要求】\n%s",
 		task.Title, task.Company, task.Responsibilities, task.Requirements)
 
-	doc := &schema.Document{
-		ID:      task.JDID,
-		Content: content,
-		MetaData: map[string]any{
-			"type":    "jd_bank",
-			"tags":    task.Tags,
-			"company": task.Company,
-			"title":   task.Title,
-		},
+	// 文档切片
+	chunks, err := splitDocument(ctx, content)
+	if err != nil {
+		return fmt.Errorf("JD 文档切片失败: %w", err)
 	}
-	chunks := []*schema.Document{doc}
-	logger.InfoCtx(ctx, "JD 解析完成", zap.String("jd_id", task.JDID))
+	logger.InfoCtx(ctx, "JD 切片完成", zap.Int("chunk_count", len(chunks)), zap.String("jd_id", task.JDID))
+
+	// 为每个切片附加元数据
+	for _, chunk := range chunks {
+		if chunk.MetaData == nil {
+			chunk.MetaData = make(map[string]any)
+		}
+		chunk.MetaData["type"] = "jd_bank"
+		chunk.MetaData["tags"] = task.Tags
+		chunk.MetaData["company"] = task.Company
+		chunk.MetaData["title"] = task.Title
+	}
 
 	ids, err := w.indexer.Store(ctx, chunks)
 	if err != nil {
 		return fmt.Errorf("JD 向量入库失败, JDID: %s, err: %w", task.JDID, err)
 	}
 
-	logger.InfoCtx(ctx, "JD 向量入库完成", zap.String("qdrant_id", ids[0]))
+	logger.InfoCtx(ctx, "JD 向量入库完成", zap.Int("chunk_count", len(ids)), zap.String("jd_id", task.JDID))
 	return nil
+}
+
+// splitDocument 递归切割长文本，避免单 chunk 过长导致 embedding 稀释
+func splitDocument(ctx context.Context, content string) ([]*schema.Document, error) {
+	doc := &schema.Document{
+		Content: content,
+	}
+	srcDocs := []*schema.Document{doc}
+
+	recConfig := &recursive.Config{
+		ChunkSize:   500,
+		OverlapSize: 50,
+		Separators:  []string{"\n\n", "\n", "。", "，", " ", ""},
+		KeepType:    recursive.KeepTypeNone,
+	}
+
+	charSplitter, err := recursive.NewSplitter(ctx, recConfig)
+	if err != nil {
+		return nil, fmt.Errorf("初始化切分器失败: %w", err)
+	}
+
+	return charSplitter.Transform(ctx, srcDocs)
 }

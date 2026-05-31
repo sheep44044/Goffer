@@ -3,6 +3,7 @@ package sandbox
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,14 +15,14 @@ import (
 	"github.com/cloudwego/eino/components/tool/utils"
 )
 
-// 1. 定义强类型的输入结构体，使用 jsonschema 标签描述供大模型阅读的元信息
+// CodeExecutionInput 定义强类型的输入结构体，使用 jsonschema 标签描述供大模型阅读的元信息
 type CodeExecutionInput struct {
 	Code     string `json:"code" jsonschema:"description=要执行的代码,required=true"`
 	Language string `json:"language" jsonschema:"description=编程语言: python/javascript/go,default=python"`
 	Timeout  int    `json:"timeout" jsonschema:"description=超时时间(秒),default=30"`
 }
 
-// 2. 创建并返回 Eino 标准 Tool
+// NewCodeExecutionTool 创建并返回 Eino 标准 Tool
 func NewCodeExecutionTool() (tool.BaseTool, error) {
 	// 直接传递名称、描述和执行函数，Eino 会自动推导 Schema 并处理序列化
 	return utils.InferTool(
@@ -135,10 +136,9 @@ func main() {
 		exitCode := 0
 
 		if err != nil {
-			if exitErr, ok := err.(*exec.ExitError); ok {
+			var exitErr *exec.ExitError
+			if errors.As(err, &exitErr) {
 				exitCode = exitErr.ExitCode()
-			} else {
-				exitCode = -1
 			}
 		}
 

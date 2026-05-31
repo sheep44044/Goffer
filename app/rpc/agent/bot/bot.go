@@ -2,6 +2,7 @@ package bot
 
 import (
 	"Goffer/kitex_gen/agent"
+	"Goffer/kitex_gen/interview"
 	"context"
 	"fmt"
 	"strings"
@@ -14,6 +15,8 @@ import (
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/flow/agent/react"
 	"github.com/cloudwego/eino/schema"
+
+	ark_model "github.com/cloudwego/eino-ext/components/model/ark"
 )
 
 // BotInput 组装给 Eino 图的输入
@@ -36,6 +39,16 @@ type InterviewBot struct {
 func NewInterviewBot(preset *presets.InterviewerPreset, svc *svc.ServiceContext) (*InterviewBot, error) {
 	// 1. 初始化执行链 (Chain)
 	chain := compose.NewChain[BotInput, *schema.Message]()
+
+	// 1.5 创建本 Bot 专属的 ChatModel，应用 YAML 预设中的 Temperature
+	chatModel, err := ark_model.NewChatModel(context.Background(), &ark_model.ChatModelConfig{
+		APIKey:      svc.Config.VolcEngine.Key,
+		Model:       svc.Config.VolcEngine.ChatModelID,
+		Temperature: &preset.Temperature,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("创建 ChatModel 失败: %w", err)
+	}
 
 	// 节点 1：动态并行检索层 (Dynamic Parallel)
 	parallel := compose.NewParallel()
@@ -82,6 +95,35 @@ func NewInterviewBot(preset *presets.InterviewerPreset, svc *svc.ServiceContext)
 		}))
 	}
 
+	// 动态判断 3：打分专家需要获取完整聊天记录进行全局评估
+	needsHistory := preset.Name == "Interview_Evaluator"
+	if needsHistory {
+		parallel.AddLambda("chat_history", compose.InvokableLambda(func(ctx context.Context, input BotInput) (string, error) {
+			resp, err := svc.InterviewClient.GetChatContext(ctx, &interview.GetChatContextReq{
+				SessionId:     input.SessionID,
+				LatestUserMsg: "", // 获取全部历史记录
+			})
+			if err != nil {
+				return fmt.Sprintf("（获取聊天记录失败: %v）", err), nil
+			}
+			if resp == nil || len(resp.History) == 0 {
+				return "（当前会话没有聊天记录）", nil
+			}
+
+			var sb strings.Builder
+			sb.WriteString(fmt.Sprintf("【本次面试(SessionID: %s)完整对话记录】\n\n", input.SessionID))
+			for _, msg := range resp.History {
+				if msg.Role == "user" {
+					sb.WriteString(fmt.Sprintf("候选人: %s\n", msg.Content))
+				} else {
+					sb.WriteString(fmt.Sprintf("面试官: %s\n", msg.Content))
+				}
+				sb.WriteString("--------\n")
+			}
+			return sb.String(), nil
+		}))
+	}
+
 	chain.AppendParallel(parallel)
 
 	// 节点 2：Prompt 逻辑组装层 (Lambda)
@@ -102,13 +144,29 @@ func NewInterviewBot(preset *presets.InterviewerPreset, svc *svc.ServiceContext)
 			qbTxt = val.(string)
 		}
 
+		// 安全提取聊天记录（仅 Interview_Evaluator 会挂载此分支）
+		chatHistoryTxt := ""
+		if val, ok := pMap["chat_history"]; ok {
+			chatHistoryTxt = val.(string)
+		}
+
+		// 构造聊天记录上下文段落
+		chatHistorySection := ""
+		if chatHistoryTxt != "" {
+			chatHistorySection = fmt.Sprintf(`
+# 面试完整记录（用于评估打分）
+%s
+---
+`, chatHistoryTxt)
+		}
+
 		// 将 SessionID 作为隐式系统参数
 		fullSystemPrompt := fmt.Sprintf(`%s
 
 # 内部系统变量（绝密：仅用于工具调用，请勿向用户暴露）
 - 当前面试 SessionID : %s
 - 当前面试环节状态 : %s
-
+%s
 # 面试上下文辅助信息
 【候选人简历相关内容】：
 %s
@@ -120,6 +178,7 @@ func NewInterviewBot(preset *presets.InterviewerPreset, svc *svc.ServiceContext)
 			preset.SystemPrompt,
 			input.SessionID,
 			input.FsmState,
+			chatHistorySection,
 			resumeTxt,
 			qbTxt,
 		)
@@ -128,7 +187,13 @@ func NewInterviewBot(preset *presets.InterviewerPreset, svc *svc.ServiceContext)
 		msgs := []*schema.Message{
 			schema.SystemMessage(fullSystemPrompt),
 		}
-		msgs = append(msgs, input.History...)
+
+		// 打分专家不需要前置对话历史（聊天记录已在系统提示词中），
+		// 其他面试官需要将历史对话传入以维持上下文连贯性
+		if chatHistoryTxt == "" {
+			msgs = append(msgs, input.History...)
+		}
+
 		msgs = append(msgs, schema.UserMessage(input.Message))
 
 		return msgs, nil
@@ -140,7 +205,7 @@ func NewInterviewBot(preset *presets.InterviewerPreset, svc *svc.ServiceContext)
 	if len(activeTools) > 0 {
 		// 如果有动作型工具，封装为 ReAct Agent
 		agent, err := react.NewAgent(context.Background(), &react.AgentConfig{
-			ToolCallingModel: svc.EinoChatModel,
+			ToolCallingModel: chatModel,
 			ToolsConfig: compose.ToolsNodeConfig{
 				Tools: activeTools,
 			},
@@ -153,7 +218,7 @@ func NewInterviewBot(preset *presets.InterviewerPreset, svc *svc.ServiceContext)
 		chain.AppendGraph(subGraph, opts...)
 	} else {
 		// 如果没有配置工具，直接挂载原生大模型，速度最快
-		chain.AppendChatModel(svc.EinoChatModel)
+		chain.AppendChatModel(chatModel)
 	}
 
 	// 4. 编译 DAG 图
