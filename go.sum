@@ -57,6 +57,8 @@ github.com/cloudwego/dynamicgo v0.8.0 h1:G5rjZlmXGgORR6jGe6MXQ6JjlGSI+e3eo9a4aCJ
 github.com/cloudwego/dynamicgo v0.8.0/go.mod h1:otlgzHhn68GH0vlmCGE0EAwcLEV8+n4yrbpocJ8hk+s=
 github.com/cloudwego/eino v0.8.13 h1:z5dhaZNN8TWZbP/lgKxGmF26Ii8fPeUlQCGV/NTtms0=
 github.com/cloudwego/eino v0.8.13/go.mod h1:+2N4nsMPxA6kGBHpH+75JuTfEcGprAMTdsZESrShKpU=
+github.com/cloudwego/eino-ext/components/document/transformer/reranker/score v0.0.0-20260529100130-76aad4b2f680 h1:RPPbwzU//3V8qCLGhzQYCIthfCUymyCt0y6JrWPwPbM=
+github.com/cloudwego/eino-ext/components/document/transformer/reranker/score v0.0.0-20260529100130-76aad4b2f680/go.mod h1:of0yJQicX4X18QkW6lZiIls6QtoJOUZQThwGololqpo=
 github.com/cloudwego/eino-ext/components/document/transformer/splitter/markdown v0.0.0-20260427010451-749e3706378b h1:3owjV4nv+XRplavTeqFlCeAV4v7EHR2tIXDqLEmPc38=
 github.com/cloudwego/eino-ext/components/document/transformer/splitter/markdown v0.0.0-20260427010451-749e3706378b/go.mod h1:KVOVct4e2BQ7epDONW2QE1qU5+ccoh91FzJTs9vIJj0=
 github.com/cloudwego/eino-ext/components/document/transformer/splitter/recursive v0.0.0-20260427010451-749e3706378b h1:j8sj/5QiooV3LWphFDsJvyD/csWwupz+UKXeG+nqiNg=

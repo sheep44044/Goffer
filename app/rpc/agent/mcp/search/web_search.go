@@ -64,7 +64,7 @@ func webSearchExecute(ctx context.Context, input *WebSearchInput) (string, error
 	case "duckduckgo":
 		results, err = searchDuckDuckGo(ctx, input.Query, count)
 	default:
-		results, err = searchDuckDuckGo(ctx, input.Query, count)
+		return "", fmt.Errorf("暂不支持的搜索引擎: %s，当前仅支持 duckduckgo", engine)
 	}
 
 	if err != nil {

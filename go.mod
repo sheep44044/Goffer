@@ -64,6 +64,7 @@ require (
 	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/cloudwego/configmanager v0.2.3 // indirect
 	github.com/cloudwego/dynamicgo v0.8.0 // indirect
+	github.com/cloudwego/eino-ext/components/document/transformer/reranker/score v0.0.0-20260529100130-76aad4b2f680 // indirect
 	github.com/cloudwego/fastpb v0.0.5 // indirect
 	github.com/cloudwego/frugal v0.3.1 // indirect
 	github.com/cloudwego/localsession v0.2.1 // indirect
