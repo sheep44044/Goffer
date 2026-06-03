@@ -11,6 +11,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strconv"
+	"strings"
 
 	"github.com/cloudwego/eino/schema"
 	"go.uber.org/zap"
@@ -68,17 +70,23 @@ func (s *AgentServiceImpl) ChatStream(req *agent.ChatStreamReq, stream agent.Age
 		}
 	}
 
+	// 解析 fsm_state 中的 Bot 交接信息
+	// 格式: "tech_foundation" 或 "tech_foundation||greeting:3"
+	fsmState, previousPhase, handoffRound := parseFsmWithHandoff(req.FsmState)
+
 	input := bot.BotInput{
-		SessionID: req.SessionId,
-		UserID:    req.UserId,
-		Message:   req.Message,
-		FsmState:  req.FsmState,
-		ResumeID:  req.ResumeId,
-		History:   einoHistory,
+		SessionID:     req.SessionId,
+		UserID:        req.UserId,
+		Message:       req.Message,
+		FsmState:      fsmState,
+		ResumeID:      req.ResumeId,
+		History:       einoHistory,
+		PreviousPhase: previousPhase,
+		HandoffRound:  handoffRound,
 	}
 
 	// 3. 使用可取消的 ctx 调用 Eino DAG
-	botName := getBotNameByFsmState(req.FsmState)
+	botName := getBotNameByFsmState(fsmState)
 	aiStream, err := bot.GetBotManager().StreamAnswer(ctx, botName, input)
 	if err != nil {
 		return fmt.Errorf("Agent 思考失败: %w", err)
@@ -126,4 +134,27 @@ func getBotNameByFsmState(fsmState string) string {
 	default:
 		return "HR_Interviewer"
 	}
+}
+
+// parseFsmWithHandoff 解析可能携带交接信息的 fsm_state。
+// 输入格式: "tech_foundation" 或 "tech_foundation||greeting:3"
+// 返回: (fsmState, previousPhase, handoffRound)
+func parseFsmWithHandoff(raw string) (string, string, int) {
+	parts := strings.SplitN(raw, "||", 2)
+	fsmState := parts[0]
+
+	if len(parts) < 2 {
+		return fsmState, "", 0
+	}
+
+	handoffParts := strings.SplitN(parts[1], ":", 2)
+	previousPhase := handoffParts[0]
+	handoffRound := 0
+	if len(handoffParts) == 2 {
+		if n, err := strconv.Atoi(handoffParts[1]); err == nil {
+			handoffRound = n
+		}
+	}
+
+	return fsmState, previousPhase, handoffRound
 }

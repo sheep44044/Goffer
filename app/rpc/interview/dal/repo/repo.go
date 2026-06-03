@@ -9,9 +9,11 @@ import (
 )
 
 type FSMState struct {
-	Status   string `json:"status"`
-	Round    int    `json:"round"`
-	ResumeID string `json:"resume_id"`
+	Status        string `json:"status"`
+	Round         int    `json:"round"`
+	ResumeID      string `json:"resume_id"`
+	PreviousPhase string `json:"previous_phase,omitempty"` // 上一环节名称（用于 Bot 交接）
+	HandoffRound  int    `json:"handoff_round,omitempty"`  // 上一环节轮次数
 }
 
 // ChatMessage 代表单条聊天消息
@@ -22,9 +24,11 @@ type ChatMessage struct {
 
 // ChatContext 代表获取到的上下文聚合数据
 type ChatContext struct {
-	FsmState string
-	History  []*ChatMessage
-	ResumeId string
+	FsmState      string
+	History       []*ChatMessage
+	ResumeId      string
+	PreviousPhase string // 上一环节名称（用于 Bot 交接）
+	HandoffRound  int    // 上一环节轮次数
 }
 
 func (s *RepoService) GetChatContextInterview(ctx context.Context, SessionId string) (*ChatContext, error) {
@@ -41,14 +45,13 @@ func (s *RepoService) GetChatContextInterview(ctx context.Context, SessionId str
 		return nil, fmt.Errorf("解析 FSM 状态失败: %w", err)
 	}
 
-	// 2. 从 MongoDB 拉取最近 5 轮历史对话
-	history, err := s.Mongo.GetRecentChatHistory(ctx, SessionId, 5)
+	// 2. 从 MongoDB 拉取全部历史对话
+	history, err := s.Mongo.GetAllChatHistory(ctx, SessionId)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch chat history from MongoDB: %w", err)
+		return nil, fmt.Errorf("failed to fetch full chat history from MongoDB: %w", err)
 	}
 
 	// 5. 组装并返回上下文给外层
-	// 注意：这里的 interview.Message 假设是你 proto 文件中定义的 message 结构
 	respMessages := make([]*ChatMessage, 0, len(history))
 	for _, h := range history {
 		respMessages = append(respMessages, &ChatMessage{
@@ -58,9 +61,11 @@ func (s *RepoService) GetChatContextInterview(ctx context.Context, SessionId str
 	}
 
 	return &ChatContext{
-		FsmState: fsmState.Status, // 例如: "greeting", "project_deep_dive"
-		History:  respMessages,    // 组装好的最近 5 轮对话数组
-		ResumeId: fsmState.ResumeID,
+		FsmState:      fsmState.Status,
+		History:       respMessages, // 完整对话数组（不再截断）
+		ResumeId:      fsmState.ResumeID,
+		PreviousPhase: fsmState.PreviousPhase, // 上一环节名称（Bot 交接用）
+		HandoffRound:  fsmState.HandoffRound,  // 上一环节轮次数
 	}, nil
 }
 

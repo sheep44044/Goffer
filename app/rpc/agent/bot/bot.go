@@ -21,12 +21,14 @@ import (
 
 // BotInput 组装给 Eino 图的输入
 type BotInput struct {
-	SessionID string
-	UserID    string
-	Message   string
-	FsmState  string
-	History   []*schema.Message
-	ResumeID  string // 用于 RAG 过滤
+	SessionID     string
+	UserID        string
+	Message       string
+	FsmState      string
+	History       []*schema.Message
+	ResumeID      string // 用于 RAG 过滤
+	PreviousPhase string // 上一环节名称（Bot 交接用，如 "greeting"）
+	HandoffRound  int    // 上一环节轮次数
 }
 
 // InterviewBot 封装编译好的执行器
@@ -160,9 +162,26 @@ func NewInterviewBot(preset *presets.InterviewerPreset, svc *svc.ServiceContext)
 `, chatHistoryTxt)
 		}
 
+		// 拼接 Bot 交接上下文（当阶段切换时，告知新 Bot 上一环节的信息）
+		handoffSection := ""
+		if input.PreviousPhase != "" {
+			prevName := phaseNameCN(input.PreviousPhase)
+			handoffSection = fmt.Sprintf(`
+🔄 面试官交接上下文（重要）
+你刚刚接手本轮面试，上一环节「%s」已经结束（共 %d 轮对话）。
+
+请你务必：
+1. 先快速浏览上方的完整对话历史，了解候选人的核心表现、已覆盖的话题和关键发现
+2. 绝对不要重复提问上一环节已经充分讨论过的问题
+3. 在上一环节的基础上自然递进，保持面试的连贯性
+4. 你的角色现在是「%s」，请严格按照你的系统人设进行面试
+
+---`, prevName, input.HandoffRound, preset.Name)
+		}
+
 		// 将 SessionID 作为隐式系统参数
 		fullSystemPrompt := fmt.Sprintf(`%s
-
+%s
 # 内部系统变量（绝密：仅用于工具调用，请勿向用户暴露）
 - 当前面试 SessionID : %s
 - 当前面试环节状态 : %s
@@ -176,6 +195,7 @@ func NewInterviewBot(preset *presets.InterviewerPreset, svc *svc.ServiceContext)
 
 请严格遵循你的系统人设。结合以上信息与候选人交谈（或进行客观打分评估）。`,
 			preset.SystemPrompt,
+			handoffSection,
 			input.SessionID,
 			input.FsmState,
 			chatHistorySection,
@@ -236,4 +256,20 @@ func NewInterviewBot(preset *presets.InterviewerPreset, svc *svc.ServiceContext)
 // StreamAnswer 对外暴露流式对话接口
 func (b *InterviewBot) StreamAnswer(ctx context.Context, input BotInput) (*schema.StreamReader[*schema.Message], error) {
 	return b.dagRunner.Stream(ctx, input)
+}
+
+// phaseNameCN 返回面试环节的中文名称，用于 Bot 交接提示
+func phaseNameCN(phase string) string {
+	switch phase {
+	case "greeting":
+		return "HR 破冰环节"
+	case "tech_foundation":
+		return "基础技术面试"
+	case "tech_architecture":
+		return "架构技术面试"
+	case "evaluator":
+		return "面试评估"
+	default:
+		return phase
+	}
 }

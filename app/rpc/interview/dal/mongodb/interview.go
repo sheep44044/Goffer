@@ -2,6 +2,7 @@ package mongodb
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -24,17 +25,14 @@ type ChatHistoryDoc struct {
 	Messages  []Message `bson:"messages"`
 }
 
-// GetRecentChatHistory 获取最近指定轮数的历史对话
+// GetRecentChatHistory 获取最近指定轮数的历史对话（保留，供需要截断的场景使用）
 func (m *MongoManager) GetRecentChatHistory(ctx context.Context, sessionID string, rounds int) ([]Message, error) {
-	// 获取 Collection
 	coll := m.DB.Collection("chat_history")
 
 	messageCount := rounds * 2
 
 	filter := bson.M{"session_id": sessionID}
 
-	// 使用 $slice 投影操作符
-	// -messageCount 表示从数组末尾向前截取
 	projection := bson.M{
 		"messages": bson.M{"$slice": -messageCount},
 	}
@@ -44,11 +42,29 @@ func (m *MongoManager) GetRecentChatHistory(ctx context.Context, sessionID strin
 	var doc ChatHistoryDoc
 	err := coll.FindOne(ctx, filter, opts).Decode(&doc)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			// 如果没查到该 session 的记录，返回空数组而不是报错
+		if errors.Is(err, mongo.ErrNoDocuments) {
 			return []Message{}, nil
 		}
 		return nil, fmt.Errorf("failed to fetch chat history from MongoDB: %w", err)
+	}
+
+	return doc.Messages, nil
+}
+
+// GetAllChatHistory 获取完整历史对话（不做 $slice 截断）
+// 现代 LLM 拥有 128K+ context window，完全可以承载一次面试的完整对话
+func (m *MongoManager) GetAllChatHistory(ctx context.Context, sessionID string) ([]Message, error) {
+	coll := m.DB.Collection("chat_history")
+
+	filter := bson.M{"session_id": sessionID}
+
+	var doc ChatHistoryDoc
+	err := coll.FindOne(ctx, filter).Decode(&doc)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return []Message{}, nil
+		}
+		return nil, fmt.Errorf("failed to fetch full chat history from MongoDB: %w", err)
 	}
 
 	return doc.Messages, nil
