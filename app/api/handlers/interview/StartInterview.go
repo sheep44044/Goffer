@@ -10,6 +10,7 @@ import (
 	"context"
 
 	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/common/utils"
 	"go.uber.org/zap"
 )
 
@@ -48,5 +49,8 @@ func StartInterview(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
-	pack.SendResponse(c, errno.Success, resp.OpeningRemark)
+	pack.SendResponse(c, errno.Success, utils.H{
+		"session_id":     resp.SessionId,
+		"opening_remark": resp.OpeningRemark,
+	})
 }

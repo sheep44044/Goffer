@@ -125,7 +125,7 @@ services:
     image: grafana/grafana:latest
     container_name: goffer-grafana
     ports:
-      - "3000:3000"
+      - "3002:3000"
     networks:
       - goffer_net
 

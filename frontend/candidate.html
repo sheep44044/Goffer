@@ -1,508 +1,167 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Goffer - AI 面试</title>
-<link rel="stylesheet" href="css/style.css">
-<style>
-  #cameraPreview { position: fixed; top: 16px; right: 16px; width: 200px; border-radius: 12px; border: 2px solid var(--border); z-index: 999; display: none; background: #000; box-shadow: 0 4px 20px rgba(0,0,0,.2); }
-  #cameraPreview video { width: 100%; height: auto; display: block; border-radius: 10px; transform: scaleX(-1); }
-  #cameraToggle { position: fixed; top: 20px; right: 224px; z-index: 1000; display: none; }
-  .voice-bar { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 99px; font-size: 13px; margin-bottom: 12px; flex-wrap: wrap; }
-  .voice-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
-  .voice-dot.connected { background: var(--success); animation: pulse 1.5s infinite; }
-  .voice-dot.speaking { background: var(--primary); animation: pulse .4s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
-  .mic-bar { height: 4px; background: var(--border); border-radius: 2px; flex: 1; min-width: 60px; overflow: hidden; }
-  .mic-level { height: 100%; background: var(--primary); border-radius: 2px; width: 0%; transition: width .1s; }
-  #remoteAudio { display: none; }
-
-  /* FSM 进度条 */
-  .fsm-steps { display: flex; gap: 0; margin-bottom: 16px; }
-  .fsm-step { flex: 1; text-align: center; padding: 8px 4px; font-size: 12px; font-weight: 600; color: var(--text-muted); border-bottom: 3px solid var(--border); transition: .3s; }
-  .fsm-step.active { color: var(--primary); border-bottom-color: var(--primary); }
-  .fsm-step.done { color: var(--success); border-bottom-color: var(--success); }
-  .fsm-step .step-num { display: block; font-size: 18px; margin-bottom: 2px; }
-
-  /* 打断反馈 */
-  .chat-msg.ai.interrupted .bubble { background: #fef2f2; border-color: var(--danger); opacity: .7; }
-  .chat-msg.ai.interrupted .bubble::after { content: ' ⚡已打断'; font-size: 11px; color: var(--danger); font-style: italic; }
-  .interrupt-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--danger); margin-left: 8px; animation: fadeIn .3s; }
-  @keyframes fadeIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }
-
-  /* 重连横幅 */
-  .reconnect-banner { background: #fef3c7; color: #92400e; padding: 10px 16px; border-radius: var(--radius); margin-bottom: 12px; display: none; align-items: center; gap: 8px; font-size: 13px; }
-  .reconnect-banner.show { display: flex; }
-  .reconnect-banner .spinner { width: 14px; height: 14px; border: 2px solid #92400e; border-top-color: transparent; border-radius: 50%; animation: spin .6s linear infinite; }
-  @keyframes spin { to{transform:rotate(360deg)} }
-
-  /* Token 过期 Toast */
-  .toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 9999; padding: 12px 24px; border-radius: 99px; font-size: 14px; font-weight: 600; animation: slideDown .3s; }
-  .toast-error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
-  @keyframes slideDown { from{opacity:0;transform:translateX(-50%) translateY(-20px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Goffer - 候选人面试</title>
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+  <audio id="remoteAudio" autoplay playsinline></audio>
 
-<video id="cameraPreview" autoplay muted playsinline></video>
-<button id="cameraToggle" class="btn btn-sm btn-outline" onclick="toggleCamera()" title="开关摄像头">📷</button>
-<audio id="remoteAudio" autoplay playsinline></audio>
-<div class="toast toast-error" id="toast" style="display:none"></div>
-
-<div class="header"><div class="container"><h1>🎙️ Goffer AI 面试</h1><span id="userBadge" class="badge badge-muted" style="display:none"></span></div></div>
-<div class="container" id="app">
-
-  <!-- 登录/注册 -->
-  <div id="authSection">
-    <div class="tabs"><button class="tab active" onclick="switchAuthTab('login')">登录</button><button class="tab" onclick="switchAuthTab('register')">注册</button></div>
-    <div class="card" id="loginForm">
-      <h2>登录</h2>
-      <label for="loginUser">用户名</label><input id="loginUser" placeholder="请输入用户名">
-      <label for="loginPass">密码</label><input id="loginPass" type="password" placeholder="请输入密码">
-      <button class="btn btn-primary" onclick="login()">登录</button>
-      <div id="loginError" class="alert alert-error" style="display:none"></div>
-    </div>
-    <div class="card" id="registerForm" style="display:none">
-      <h2>注册</h2>
-      <label for="regUser">用户名</label><input id="regUser" placeholder="请输入用户名">
-      <label for="regPass">密码</label><input id="regPass" type="password" placeholder="请输入密码">
-      <button class="btn btn-primary" onclick="register()">注册</button>
-      <div id="regError" class="alert alert-error" style="display:none"></div>
-      <div id="regSuccess" class="alert alert-success" style="display:none"></div>
-    </div>
-  </div>
-
-  <!-- 面试区 -->
-  <div id="interviewSection" style="display:none">
-
-    <div class="card" id="uploadCard">
-      <h2>📄 上传简历</h2>
-      <div class="file-drop" id="dropZone" onclick="document.getElementById('fileInput').click()">
-        <div class="icon">📂</div>
-        <p>拖拽 PDF / JPG / PNG 到此处，或点击选择</p>
-        <p style="font-size:12px;color:var(--text-muted)">最大 10MB</p>
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <div>
+        <p class="eyebrow">Goffer Candidate</p>
+        <h1>AI 拟真面试</h1>
       </div>
-      <input type="file" id="fileInput" aria-label="选择简历文件" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="handleFile(event)">
-      <div id="uploadStatus" style="margin-top:12px"></div>
-    </div>
-
-    <div class="card" id="startCard" style="display:none">
-      <h2>🚀 开始面试</h2>
-      <div id="resumeInfo" class="alert alert-success" style="margin-bottom:16px"></div>
-      <button class="btn btn-primary" id="startBtn" onclick="startInterview()">开始 AI 语音面试</button>
-      <div id="startError" class="alert alert-error" style="display:none;margin-top:12px"></div>
-    </div>
-
-    <div class="card" id="chatCard" style="display:none">
-      <div class="reconnect-banner" id="reconnectBanner"><span class="spinner"></span> 语音连接断开，正在重连...</div>
-      <!-- 语音状态条 -->
-      <div class="voice-bar">
-        <span class="voice-dot" id="voiceDot"></span>
-        <span id="voiceLabel" style="font-size:13px">语音未连接</span>
-        <div class="mic-bar"><div class="mic-level" id="micLevel"></div></div>
-        <button class="btn btn-sm btn-outline" id="muteBtn" onclick="toggleMute()" disabled>🎤 静音</button>
-        <button class="btn btn-sm" id="voiceModeBtn" onclick="toggleVoiceMode()" style="background:var(--border);color:var(--text-muted)">🎙️ 语音对话</button>
+      <div class="topbar-actions">
+        <span id="userBadge" class="badge badge-muted" hidden></span>
+        <button id="logoutBtn" class="btn btn-outline btn-sm" type="button" hidden>退出登录</button>
       </div>
-      <!-- FSM 进度条 -->
-      <div class="fsm-steps" id="fsmSteps">
-        <div class="fsm-step active" data-stage="greeting"><span class="step-num">1</span>自我介绍</div>
-        <div class="fsm-step" data-stage="tech_foundation"><span class="step-num">2</span>技术基础</div>
-        <div class="fsm-step" data-stage="tech_architecture"><span class="step-num">3</span>架构设计</div>
-        <div class="fsm-step" data-stage="evaluator"><span class="step-num">4</span>综合评估</div>
-      </div>
-      <div class="chat-box" id="chatBox"></div>
-      <div class="chat-input-row">
-        <input id="chatInput" aria-label="输入消息" placeholder="输入回答...（语音自动识别）" onkeydown="if(event.key==='Enter')sendMessage()">
-        <button class="btn btn-primary" id="sendBtn" onclick="sendMessage()">发送</button>
-      </div>
-      <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="endInterview()">结束面试</button>
-      <div id="chatError" class="alert alert-error" style="display:none;margin-top:8px"></div>
     </div>
+  </header>
 
-  </div>
-</div>
+  <main class="container app-grid">
+    <section id="authSection" class="panel auth-panel">
+      <div class="tabs compact-tabs">
+        <button class="tab active" type="button" data-auth-tab="login">登录</button>
+        <button class="tab" type="button" data-auth-tab="register">注册</button>
+      </div>
 
-<script>
-const BASE = 'http://localhost:8080';
-const WS_URL = 'ws://localhost:8890/ws';
-const STUN = ['stun:stun.l.google.com:19302'];
-let token, resumeId, sessionId, username;
+      <div id="authAlert" class="alert" hidden></div>
 
-// ==================== API wrapper (401 interception) ====================
-async function api(path, opts={}){
-  if(token) opts.headers = {...opts.headers, 'Authorization':'Bearer '+token};
-  const r = await fetch(BASE+path, opts);
-  if(r.status === 401){ toast('登录已过期，请重新登录'); return logout(); }
-  return r;
-}
+      <div id="loginPane">
+        <h2>进入面试间</h2>
+        <p class="muted">登录后可上传简历并开始文本或语音面试。</p>
+        <form id="loginForm" class="form-stack">
+          <label for="loginUsername">用户名</label>
+          <input id="loginUsername" autocomplete="username" placeholder="candidate">
+          <label for="loginPassword">密码</label>
+          <input id="loginPassword" type="password" autocomplete="current-password" placeholder="123456">
+          <button id="loginBtn" class="btn btn-primary full-width" type="submit">登录</button>
+        </form>
+      </div>
 
-// ==================== Auth ====================
-function switchAuthTab(tab){
-  document.querySelectorAll('#authSection .tab').forEach(t=>t.classList.remove('active'));
-  event.target.classList.add('active');
-  id('loginForm').style.display = tab==='login'?'':'none';
-  id('registerForm').style.display = tab==='register'?'':'none';
-}
-async function register(){
-  const u=id('regUser').value.trim(),p=id('regPass').value.trim();
-  hide('regError');hide('regSuccess');
-  if(!u||!p)return showEl('regError','请输入用户名和密码');
-  try{
-    const r=await api('/api/user/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
-    const d=await r.json(); if(d.code!==0)return showEl('regError',d.message);
-    showEl('regSuccess','注册成功，请切换到登录页');
-    id('loginUser').value=u;id('loginPass').value=p;
-  }catch(e){showEl('regError','网络错误: '+e.message)}
-}
-async function login(){
-  const u=id('loginUser').value.trim(),p=id('loginPass').value.trim();
-  hide('loginError');
-  if(!u||!p)return showEl('loginError','请输入用户名和密码');
-  try{
-    const r=await api('/api/user/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
-    const d=await r.json(); if(d.code!==0)return showEl('loginError',d.message);
-    token=d.data;username=u;
-    hide('authSection');id('interviewSection').style.display='';
-    id('userBadge').textContent='👤 '+u;id('userBadge').style.display='';
-  }catch(e){showEl('loginError','网络错误: '+e.message)}
-}
-function logout(){
-  endInterview(); token=''; resumeId=''; sessionId=''; username='';
-  hide('interviewSection');id('authSection').style.display='';
-  id('userBadge').style.display='none';
-  id('loginUser').value='';id('loginPass').value='';
-}
+      <div id="registerPane" hidden>
+        <h2>创建候选人账号</h2>
+        <p class="muted">注册成功后可直接用该账号登录。</p>
+        <form id="registerForm" class="form-stack">
+          <label for="registerUsername">用户名</label>
+          <input id="registerUsername" autocomplete="username" placeholder="candidate">
+          <label for="registerPassword">密码</label>
+          <input id="registerPassword" type="password" autocomplete="new-password" placeholder="至少 6 位">
+          <button id="registerBtn" class="btn btn-primary full-width" type="submit">注册</button>
+        </form>
+      </div>
+    </section>
 
-// ==================== Resume ====================
-(function(){
-  const dz=id('dropZone');
-  dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragover')});
-  dz.addEventListener('dragleave',()=>dz.classList.remove('dragover'));
-  dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dragover');handleFile({target:{files:e.dataTransfer.files}})});
-})();
-async function handleFile(e){
-  const file=e.target.files[0];if(!file)return;
-  const fd=new FormData();fd.append('file',file);
-  id('uploadStatus').innerHTML='<div class="alert alert-info">上传中...</div>';
-  try{
-    const r=await api('/api/resume/upload',{method:'POST',body:fd});
-    const d=await r.json();
-    if(d.code!==0){id('uploadStatus').innerHTML='<div class="alert alert-error">'+d.message+'</div>';return}
-    resumeId=d.data.resumeID;id('uploadStatus').innerHTML='';
-    hide('uploadCard');id('startCard').style.display='';
-    id('resumeInfo').innerHTML='✅ 简历已就绪: <b>'+file.name+'</b> (ID: '+resumeId+')';
-  }catch(e){id('uploadStatus').innerHTML='<div class="alert alert-error">上传失败: '+e.message+'</div>'}
-}
+    <section id="candidateShell" class="workspace" hidden>
+      <section id="setupSection" class="layout-two">
+        <div class="panel">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Step 1</p>
+              <h2>上传简历</h2>
+            </div>
+            <span class="badge badge-muted">PDF / JPG / PNG</span>
+          </div>
 
-// ==================== FSM State Machine ====================
-const FSM_STAGES = ['greeting','tech_foundation','tech_architecture','evaluator'];
-const STAGE_ROUNDS = {greeting:1, tech_foundation:4, tech_architecture:4}; // 每阶段最大轮次
-let fsmStage = 'greeting', fsmStageRound = 0, totalInterrupts = 0;
+          <div id="resumeDrop" class="file-drop" role="button" tabindex="0">
+            <div class="file-drop-icon">DOC</div>
+            <p>拖拽简历到此处，或点击选择文件</p>
+            <span>最大 10MB</span>
+          </div>
+          <input id="resumeInput" type="file" accept=".pdf,.jpg,.jpeg,.png" hidden>
+          <div id="resumeUploadState" class="inline-status" hidden></div>
+          <div id="resumeAlert" class="alert" hidden></div>
 
-function advanceFSM(){
-  fsmStageRound++;
-  const max = STAGE_ROUNDS[fsmStage];
-  if(max && fsmStageRound >= max){
-    const idx = FSM_STAGES.indexOf(fsmStage);
-    if(idx < FSM_STAGES.length-1){
-      fsmStage = FSM_STAGES[idx+1];
-      fsmStageRound = 0;
-    }
-  }
-  renderFSM();
-}
-function renderFSM(){
-  const steps = document.querySelectorAll('.fsm-step');
-  let passed = true;
-  steps.forEach(s=>{
-    const stage = s.dataset.stage;
-    s.classList.remove('active','done');
-    if(stage === fsmStage){ s.classList.add('active'); passed = false; }
-    else if(passed) s.classList.add('done');
-    else { /* upcoming */ }
-  });
-}
+          <div id="resumeResult" class="result-box" hidden>
+            <dl>
+              <dt>文件名</dt>
+              <dd id="resumeName"></dd>
+              <dt>ResumeID</dt>
+              <dd id="resumeID"></dd>
+              <dt>FileURL</dt>
+              <dd id="resumeURL"></dd>
+            </dl>
+          </div>
+        </div>
 
-// ==================== WebRTC Voice ====================
-let pc,ws,micStream,cameraStream,dataChannel,audioCtx,analyser,vadRunning,reconnectTimer,reconnecting,isMuted,wasSpeaking;
-let recognition,synth,voiceMode=false,ttsSpeaking=false;
+        <div class="panel start-panel">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Step 2</p>
+              <h2>开始面试</h2>
+            </div>
+            <span class="badge badge-success">SSE + WebRTC</span>
+          </div>
+          <div id="setupEmpty" class="empty-state compact">
+            <div class="empty-icon">ID</div>
+            <p>上传简历后即可启动 AI 面试会话。</p>
+          </div>
+          <button id="startInterviewBtn" class="btn btn-primary full-width" type="button" disabled>开始面试</button>
+          <div id="startAlert" class="alert" hidden></div>
+          <div class="hint-list">
+            <p id="speechSupport"></p>
+            <p id="ttsSupport"></p>
+          </div>
+        </div>
+      </section>
 
-async function startInterview(){
-  hide('startError');id('startBtn').disabled=true;id('startBtn').textContent='正在建立语音连接...';
-  try{
-    // 1. 媒体权限
-    micStream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:{width:320,height:240}});
-    const videoTrack = micStream.getVideoTracks()[0];
-    if(videoTrack){
-      cameraStream = new MediaStream([videoTrack]);
-      const v=id('cameraPreview');v.srcObject=cameraStream;v.style.display='';id('cameraToggle').style.display='';
-    }
-    // 2. 获取 Session
-    const r=await api('/api/interview/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resume_id:resumeId})});
-    const d=await r.json();
-    if(d.code!==0){showEl('startError',d.message);id('startBtn').disabled=false;id('startBtn').textContent='开始 AI 语音面试';return}
-    sessionId = d.data?.session_id || 'sess_'+Date.now();
-    const opening = typeof d.data==='string' ? d.data : (d.data?.opening||'面试开始');
-    // 重置 FSM
-    fsmStage='greeting';fsmStageRound=0;totalInterrupts=0;renderFSM();
-    addChatMsg('system','语音面试已建立 (Session: '+sessionId.slice(0,8)+'...)');
-    addChatMsg('ai',opening);
-    hide('startCard');id('chatCard').style.display='';id('sendBtn').disabled=false;
+      <section id="chatSection" class="panel interview-panel" hidden>
+        <div class="interview-header">
+          <div>
+            <p class="eyebrow">Live Interview</p>
+            <h2>面试进行中</h2>
+          </div>
+          <button id="endInterviewBtn" class="btn btn-outline" type="button">结束面试</button>
+        </div>
 
-    // 3. 初始化 WebRTC
-    await setupWebRTC(micStream.getAudioTracks());
-    // 4. VAD
-    startVAD(micStream.getAudioTracks()[0]);
-  }catch(e){
-    showEl('startError','启动失败: '+e.message);
-    id('startBtn').disabled=false;id('startBtn').textContent='开始 AI 语音面试';
-  }
-}
+        <div class="voice-toolbar">
+          <span id="voiceDot" class="status-dot disconnected"></span>
+          <span id="voiceStateText">语音未连接</span>
+          <div class="mic-meter"><span id="micLevel"></span></div>
+          <button id="muteBtn" class="btn btn-sm btn-outline" type="button" disabled>静音</button>
+          <button id="interruptBtn" class="btn btn-sm btn-danger" type="button" disabled>打断</button>
+          <button id="voiceModeBtn" class="btn btn-sm btn-outline" type="button">语音输入</button>
+        </div>
+        <div id="voiceReconnect" class="reconnect-banner" hidden>语音链路断开，正在尝试重连。</div>
 
-async function setupWebRTC(audioTracks){
-  pc = new RTCPeerConnection({iceServers: STUN.map(url=>({urls:[url]}))});
-  audioTracks.forEach(t=>pc.addTrack(t,micStream));
-  pc.ontrack = e => { id('remoteAudio').srcObject = e.streams[0]; setVoiceState('connected'); hide('reconnectBanner'); };
-  dataChannel = pc.createDataChannel('control',{ordered:true});
-  pc.onicecandidate = e => { if(!e.candidate)return; wsSend({type:'ice-candidate',room_id:sessionId,user_id:username,candidate:e.candidate.candidate}); };
-  pc.oniceconnectionstatechange = () => {
-    const s = pc.iceConnectionState;
-    if(s==='connected'||s==='completed'){ setVoiceState('connected'); hide('reconnectBanner'); if(reconnectTimer){clearTimeout(reconnectTimer);reconnectTimer=null;} }
-    else if(s==='disconnected'){ setVoiceState('disconnected'); scheduleReconnect(); }
-    else if(s==='failed'){ setVoiceState('disconnected'); scheduleReconnect(); }
-  };
-  connectWS();
-}
+        <div class="progress-rail">
+          <div class="progress-step active" data-stage="greeting">
+            <span>1</span>
+            自我介绍
+          </div>
+          <div class="progress-step" data-stage="tech_foundation">
+            <span>2</span>
+            技术基础
+          </div>
+          <div class="progress-step" data-stage="tech_architecture">
+            <span>3</span>
+            架构设计
+          </div>
+          <div class="progress-step" data-stage="evaluator">
+            <span>4</span>
+            综合评估
+          </div>
+          <small id="roundText">第 1 轮</small>
+        </div>
 
-// ==================== WebSocket (with reconnection) ====================
-function connectWS(){
-  if(ws){ try{ws.close()}catch(e){} }
-  ws = new WebSocket(WS_URL);
-  ws.onopen = async ()=>{
-    hide('reconnectBanner');
-    if(pc.signalingState!=='stable') return;
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    wsSend({type:'offer',room_id:sessionId,user_id:username,sdp:offer.sdp});
-    if(reconnecting){ reconnecting=false; await restoreSession(); }
-  };
-  ws.onmessage = async e => {
-    const msg = JSON.parse(e.data);
-    if(msg.type==='answer') await pc.setRemoteDescription(new RTCSessionDescription({type:'answer',sdp:msg.sdp}));
-    else if(msg.type==='ice-candidate'&&msg.candidate) await pc.addIceCandidate(new RTCIceCandidate({candidate:msg.candidate,sdpMid:'0'}));
-  };
-  ws.onclose = ()=>{ setVoiceState('disconnected'); scheduleReconnect(); };
-}
+        <div id="chatBox" class="chat-box" aria-live="polite"></div>
+        <div id="chatAlert" class="alert" hidden></div>
 
-function scheduleReconnect(){
-  if(reconnectTimer||!sessionId)return;
-  reconnecting = true;
-  id('reconnectBanner').classList.add('show');
-  reconnectTimer = setTimeout(()=>{ reconnectTimer=null; if(sessionId) connectWS(); }, 3000);
-}
+        <div class="chat-composer">
+          <textarea id="chatInput" rows="2" placeholder="输入回答，Enter 发送，Shift + Enter 换行"></textarea>
+          <button id="sendBtn" class="btn btn-primary" type="button">发送</button>
+        </div>
+      </section>
+    </section>
+  </main>
 
-// ==================== Session Restore ====================
-async function restoreSession(){
-  if(!sessionId)return;
-  try{
-    const r=await api('/api/interview/resume',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId})});
-    const d=await r.json();
-    if(d.code!==0||!d.data)return;
-    const {fsm_state, round, history}=d.data;
-    fsmStage=fsm_state||'greeting'; fsmStageRound=round||0; renderFSM();
-    id('chatBox').innerHTML='';
-    if(history) for(const m of history) addChatMsg(m.role, m.content);
-    addChatMsg('system','✅ 会话已恢复');
-  }catch(e){ console.error('恢复会话失败:',e); }
-}
-
-// ==================== VAD (with interrupt feedback) ====================
-function startVAD(audioTrack){
-  audioCtx = new AudioContext();
-  const src = audioCtx.createMediaStreamSource(new MediaStream([audioTrack]));
-  analyser = audioCtx.createAnalyser(); analyser.fftSize = 256; src.connect(analyser);
-  const data = new Uint8Array(analyser.frequencyBinCount);
-  vadRunning=true; wasSpeaking=false;
-  function check(){
-    if(!vadRunning||!analyser)return;
-    analyser.getByteFrequencyData(data);
-    const avg = data.reduce((a,b)=>a+b,0)/data.length;
-    id('micLevel').style.width = Math.min(100,avg*2)+'%';
-    const speaking = avg > 30;
-    if(speaking && !wasSpeaking){
-      wasSpeaking = true;
-      if(dataChannel && dataChannel.readyState==='open'){
-        dataChannel.send(JSON.stringify({action:'cancel'}));
-        markInterrupt(); // Phase 3: 打断反馈
-      }
-    }
-    if(!speaking && wasSpeaking) wasSpeaking = false;
-    if(speaking) id('voiceDot').className = 'voice-dot speaking';
-    else if(pc&&(pc.iceConnectionState==='connected'||pc.iceConnectionState==='completed')) id('voiceDot').className = 'voice-dot connected';
-    requestAnimationFrame(check);
-  }
-  check();
-}
-
-function markInterrupt(){
-  totalInterrupts++;
-  stopTTS(); // 打断时停止 AI 语音朗读
-  const bubbles = document.querySelectorAll('.chat-msg.ai .bubble');
-  const last = bubbles[bubbles.length-1];
-  if(last && currentAiMsg && currentAiMsg.length > 0){
-    last.parentElement.classList.add('interrupted');
-    // 追加打断计数
-    const badge = document.createElement('span');
-    badge.className = 'interrupt-badge';
-    badge.textContent = '⚡打断 ×'+totalInterrupts;
-    last.parentElement.appendChild(badge);
-  }
-  // 清空当前流式输出，等待 AI 新回复
-  currentAiMsg = '';
-  // 移除最后一个 AI div（打断后新响应由下一轮 sendMessage 触发）
-  addChatMsg('system','⏸️ 已打断 AI — 请开始说话');
-}
-
-// ==================== Voice helpers ====================
-function setVoiceState(st){
-  const d=id('voiceDot'),l=id('voiceLabel');
-  if(st==='connected'){d.className='voice-dot connected';l.textContent='语音已连接'}
-  else{d.className='voice-dot';l.textContent='语音未连接'}
-}
-function toggleMute(){
-  if(!micStream)return;isMuted=!isMuted;
-  micStream.getAudioTracks().forEach(t=>t.enabled=!isMuted);
-  id('muteBtn').textContent = isMuted?'🔇 取消静音':'🎤 静音';
-}
-function wsSend(msg){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(msg))}
-function toggleCamera(){const v=id('cameraPreview');v.style.display=v.style.display==='none'?'':'none';}
-
-// ==================== Web Speech API (STT + TTS) ====================
-const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-function toggleVoiceMode(){
-  voiceMode = !voiceMode;
-  const btn = id('voiceModeBtn');
-  if(voiceMode){
-    btn.style.background='var(--success)'; btn.style.color='#fff'; btn.textContent='🎙️ 语音对话: ON';
-    startSpeechRecognition();
-  }else{
-    btn.style.background='var(--border)'; btn.style.color='var(--text-muted)'; btn.textContent='🎙️ 语音对话';
-    stopSpeechRecognition();
-  }
-}
-
-function startSpeechRecognition(){
-  if(!SpeechRecognition){ addChatMsg('system','⚠️ 当前浏览器不支持语音识别（请使用 Chrome 或 Edge）'); return; }
-  stopSpeechRecognition();
-  recognition = new SpeechRecognition();
-  recognition.lang = 'zh-CN';
-  recognition.interimResults = false;
-  recognition.continuous = true;
-  recognition.onresult = e => {
-    for(let i=e.resultIndex;i<e.results.length;i++){
-      if(e.results[i].isFinal){
-        const text = e.results[i][0].transcript.trim();
-        if(text) sendMessage(text);
-      }
-    }
-  };
-  recognition.onerror = e => {
-    if(e.error==='no-speech'||e.error==='aborted') return;
-    addChatMsg('system','⚠️ 语音识别错误: '+e.error);
-  };
-  recognition.onend = ()=>{
-    if(voiceMode) recognition.start(); // 自动重启，保持持续监听
-  };
-  recognition.start();
-  addChatMsg('system','🎙️ 语音识别已开启，直接说话即可');
-}
-
-function stopSpeechRecognition(){
-  if(recognition){ try{recognition.stop()}catch(e){}; recognition=null; }
-}
-
-function speakText(text){
-  if(!voiceMode||!window.speechSynthesis) return;
-  stopTTS();
-  synth = new SpeechSynthesisUtterance(text);
-  synth.lang = 'zh-CN';
-  synth.rate = 1.1;
-  synth.onstart = ()=>{ ttsSpeaking = true; };
-  synth.onend = synth.onerror = ()=>{ ttsSpeaking = false; synth = null; };
-  window.speechSynthesis.speak(synth);
-}
-
-function stopTTS(){
-  if(synth){ synth.onend = null; synth.onerror = null; }
-  window.speechSynthesis.cancel();
-  ttsSpeaking = false; synth = null;
-}
-
-// ==================== SSE Chat ====================
-let currentAiMsg='';
-function addChatMsg(role,text){
-  const box=id('chatBox'),div=document.createElement('div');
-  div.className='chat-msg '+role;
-  div.innerHTML='<span class="bubble">'+text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</span><div class="time">'+new Date().toLocaleTimeString()+'</div>';
-  box.appendChild(div);box.scrollTop=box.scrollHeight;return div;
-}
-function sendMessage(){
-  const input=id('chatInput'),text=input.value.trim();if(!text)return;
-  addChatMsg('user',text);input.value='';
-  hide('chatError');currentAiMsg='';
-  const aiDiv=addChatMsg('ai','');
-  id('sendBtn').disabled=true;
-  // SSE
-  api('/api/interview/chat',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({session_id:sessionId,content:text})
-  }).then(async resp=>{
-    const reader=resp.body.getReader(),decoder=new TextDecoder();let buf='';
-    while(true){
-      const{done,value}=await reader.read();if(done)break;
-      buf+=decoder.decode(value,{stream:true});
-      const lines=buf.split('\n');buf=lines.pop()||'';
-      for(const l of lines){
-        if(l.startsWith('data:')){
-          const c=l.slice(5).trim();if(c==='[DONE]'){advanceFSM();speakText(currentAiMsg);continue}
-          currentAiMsg+=c;aiDiv.querySelector('.bubble').textContent=currentAiMsg;
-          id('chatBox').scrollTop=id('chatBox').scrollHeight;
-        }
-      }
-    }
-  }).catch(e=>{
-    if(e.name==='AbortError')return;
-    aiDiv.querySelector('.bubble').textContent='（AI 面试官暂时走神了，请重试）';
-    showEl('chatError',e.message);
-  }).finally(()=>{id('sendBtn').disabled=false;});
-}
-
-// ==================== Cleanup ====================
-function endInterview(){
-  vadRunning=false;if(reconnectTimer){clearTimeout(reconnectTimer);reconnectTimer=null}
-  stopSpeechRecognition(); stopTTS(); voiceMode = false;
-  const vbtn = id('voiceModeBtn');
-  if(vbtn){ vbtn.style.background='var(--border)'; vbtn.style.color='var(--text-muted)'; vbtn.textContent='🎙️ 语音对话'; }
-  if(pc){pc.close();pc=null} if(ws){ws.close();ws=null}
-  if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null}
-  if(cameraStream){cameraStream.getTracks().forEach(t=>t.stop());cameraStream=null}
-  if(audioCtx){audioCtx.close();audioCtx=null}
-  sessionId='';currentAiMsg='';dataChannel=null;fsmStage='greeting';fsmStageRound=0;
-  id('chatBox').innerHTML='';hide('chatCard');id('startCard').style.display='';
-  renderFSM();setVoiceState('disconnected');
-  hide('cameraPreview');hide('cameraToggle');id('muteBtn').disabled=true;hide('reconnectBanner');
-}
-
-// ==================== Toast ====================
-function toast(msg){const t=id('toast');t.textContent=msg;t.style.display='';setTimeout(()=>t.style.display='none',3000);}
-
-// ==================== Helpers ====================
-function id(s){return document.getElementById(s)}
-function hide(s){const el=id(s);if(el)el.style.display='none'}
-function showEl(s,msg){const el=id(s);el.textContent=msg;el.style.display=''}
-</script>
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/webrtc.js"></script>
+  <script src="js/candidate.js"></script>
 </body>
 </html>

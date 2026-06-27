@@ -50,13 +50,20 @@ make stop
 make frontend
 ```
 
+前端开发服务器地址：
+
+| 页面 | 地址 |
+|------|------|
+| 候选人端 | `http://localhost:3000/candidate.html` |
+| 管理端 | `http://localhost:3000/admin.html` |
+
 ### 4. 可观测面板
 
 | 面板 | 地址 |
 |------|------|
 | API 网关 | `http://localhost:8080` |
 | Jaeger UI | `http://localhost:16686` |
-| Grafana | `http://localhost:3000` |
+| Grafana | `http://localhost:3002` |
 | MinIO 控制台 | `http://localhost:9001` |
 | Prometheus | `http://localhost:9090` |
 
